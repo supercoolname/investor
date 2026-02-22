@@ -38,6 +38,12 @@ def render_sidebar():
 
         st.divider()
 
+        st.markdown("**Income Statement**")
+        st.markdown(f"- EBIT: **{utils.fmt_b(data.get('ebit'))}**")
+        tax_str = f"{data['effective_tax_rate'] * 100:.1f}%" if data.get('effective_tax_rate') else "N/A"
+        st.markdown(f"- Eff. Tax Rate: **{tax_str}**")
+        st.markdown(f"- NOPAT: **{utils.fmt_b(data.get('nopat'))}**")
+
         st.markdown("**Cash Flow Statement**")
         st.markdown(f"- Op CF: **{utils.fmt_b(data.get('operating_cash_flow'))}**")
         st.markdown(f"- CapEx: **{utils.fmt_b(data.get('capex'))}**")

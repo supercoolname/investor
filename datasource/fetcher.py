@@ -91,6 +91,23 @@ def fetch_stock_data(ticker: str) -> dict:
     sector = info.get("sector")
     industry = info.get("industry")
 
+    # NOPAT = EBIT × (1 − effective_tax_rate) for Three-Phase DCF
+    ebit = None
+    effective_tax_rate = None
+    nopat = None
+    income = stock.income_stmt
+    if income is not None and not income.empty:
+        if "EBIT" in income.index:
+            ebit = float(income.loc["EBIT"].iloc[0])
+        elif "Operating Income" in income.index:
+            ebit = float(income.loc["Operating Income"].iloc[0])
+        if ebit is not None:
+            tax = income.loc["Tax Provision"].iloc[0] if "Tax Provision" in income.index else None
+            pretax = income.loc["Pretax Income"].iloc[0] if "Pretax Income" in income.index else None
+            if tax is not None and pretax and float(pretax) > 0:
+                effective_tax_rate = min(abs(float(tax)) / float(pretax), 1.0)
+            nopat = ebit * (1 - (effective_tax_rate or 0.0))
+
     return {
         "fcf": fcf,
         "net_debt": net_debt,
@@ -102,6 +119,9 @@ def fetch_stock_data(ticker: str) -> dict:
         "market_cap": market_cap,
         "operating_cash_flow": operating_cash_flow,
         "capex": capex,
+        "ebit": ebit,
+        "effective_tax_rate": effective_tax_rate,
+        "nopat": nopat,
         "revenue": revenue,
         "ebitda": ebitda,
         "pe_ratio": pe_ratio,

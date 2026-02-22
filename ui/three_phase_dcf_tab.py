@@ -12,8 +12,16 @@ def render_three_phase_dcf_tab():
 
     data = st.session_state.stock_data
 
-    nopat = data.get("operating_cash_flow") or data["fcf"]
-    nopat_source = "Operating Cash Flow" if data.get("operating_cash_flow") else "FCF (fallback)"
+    if data.get("nopat"):
+        nopat = data["nopat"]
+        tax_pct = f"{data['effective_tax_rate'] * 100:.1f}%" if data.get("effective_tax_rate") else "N/A"
+        nopat_source = f"EBIT × (1 − {tax_pct})"
+    elif data.get("operating_cash_flow"):
+        nopat = data["operating_cash_flow"]
+        nopat_source = "Operating Cash Flow (EBIT unavailable)"
+    else:
+        nopat = data["fcf"]
+        nopat_source = "FCF (fallback)"
 
     # ── Phase Duration ─────────────────────────────────────────────────────────
     st.markdown("**Phase Durations (years)**")
