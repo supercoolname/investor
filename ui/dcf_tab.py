@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from dcf.apps.dcf_app import run_dcf, run_dcf_simulation
+from apps.dcf_app import run_dcf, run_dcf_simulation
 from ui.utils import fmt_b
 
 

@@ -2,7 +2,7 @@
 Damodaran DCF application layer: public API for the ROIC-based DCF model.
 """
 
-from dcf.models.damodaran_dcf_model import _damodaran_dcf
+from models.damodaran_dcf_model import _damodaran_dcf
 
 
 def run_damodaran_dcf(

@@ -2,7 +2,7 @@
 DCF application layer: public API for running DCF valuations and simulations.
 """
 
-from dcf.models.dcf_model import _dcf_linear_growth
+from models.dcf_model import _dcf_linear_growth
 
 _SIM_YEARS = 7
 _SIM_NEAR_GROWTH_OFFSETS = [x / 100 for x in range(-5, 9)]   # -5% to +8% in 1% steps

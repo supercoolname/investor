@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from dcf.apps.damodaran_dcf_app import run_damodaran_dcf
+from apps.damodaran_dcf_app import run_damodaran_dcf
 from ui.utils import fmt_b
 
 
