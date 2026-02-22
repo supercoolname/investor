@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from apps.damodaran_dcf_app import run_dcf_three_phase
+from apps.damodaran_dcf_app import run_dcf_three_phase, compute_three_phase_sensitivity
 from ui.utils import fmt_b
 
 
@@ -213,6 +213,53 @@ def render_three_phase_dcf_tab():
         ("Current Price per Share",             f"${market:.2f}"),
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # ── Sensitivity Analysis ───────────────────────────────────────────────────
+    st.subheader("📊 Sensitivity Analysis")
+    sens = compute_three_phase_sensitivity(
+        nopat=nopat,
+        roic_invest=roic_invest,
+        roic_peak=roic_peak,
+        g_start=g_start,
+        g_terminal=g_terminal,
+        wacc=wacc,
+        net_debt=data["net_debt"],
+        shares_outstanding=data["shares_outstanding"],
+        years_invest=years_invest,
+        years_scale=years_scale,
+        years_mature=years_mature,
+        issuance_price=issuance_price,
+        roic_terminal=None,
+    )
+
+    if sens:
+        top3 = sens[:3]
+        c1, c2, c3 = st.columns(3)
+        for col, item, rank in zip([c1, c2, c3], top3, [1, 2, 3]):
+            col.metric(
+                f"#{rank} {item['parameter']}",
+                f"{item['sensitivity']:+.1f}%",
+                help="% change in intrinsic value per +1pp change in this parameter",
+            )
+
+        # Horizontal bar chart of all parameters
+        sens_df = pd.DataFrame(sens).set_index("parameter")
+        st.bar_chart(sens_df["sensitivity"])
+
+        # Auto-generated interpretation based on #1 parameter
+        _captions = {
+            "WACC (r)":             "WACC dominates: most value sits in the terminal period — typical of high-growth companies where early FCFs are negative.",
+            "Terminal Growth (g∞)": "Terminal growth dominates: the Gordon Growth spread (r − g∞) is small, so a 1pp shift amplifies dramatically.",
+            "Initial Growth (g)":   "Initial growth dominates: near-term FCFs drive most of the value — typical of mature, cash-generating companies.",
+            "ROIC — Scale Peak":    "Scale-phase ROIC dominates: the FCF surge during peak profitability is the core value driver.",
+            "NOPAT₀":               "Base earnings dominate: NOPAT₀ scales all future FCFs proportionally — entry-point earnings are the key lever.",
+            "ROIC — Investment":    "Investment-phase ROIC dominates: early capital efficiency determines how quickly the company reaches scale.",
+        }
+        top_param = top3[0]["parameter"]
+        caption = _captions.get(top_param, f"{top_param} is the dominant value driver for this configuration.")
+        st.caption(caption)
 
     st.divider()
 
