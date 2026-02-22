@@ -2,15 +2,32 @@ import pandas as pd
 import streamlit as st
 
 import apps.damodaran_dcf_app as damodaran_dcf_app
+import datasource.fetcher as fetcher
 import ui.utils as utils
 
 
 def render_three_phase_dcf_tab():
-    if "stock_data" not in st.session_state:
-        st.info("Load a stock from the sidebar first.")
+    tc, bc = st.columns([3, 1])
+    with tc:
+        ticker = st.text_input("Ticker Symbol", value="AAPL", key="tp_ticker_input").upper().strip()
+    with bc:
+        st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+        load = st.button("Load", type="primary", key="tp_load", use_container_width=True)
+
+    if load and ticker:
+        with st.spinner(f"Fetching {ticker}..."):
+            try:
+                st.session_state.tp_stock_data = fetcher.fetch_stock_data(ticker)
+                st.session_state.tp_stock_ticker = ticker
+            except ValueError as e:
+                st.error(str(e))
+                return
+
+    if "tp_stock_data" not in st.session_state:
+        st.info("Enter a ticker and click Load.")
         return
 
-    data = st.session_state.stock_data
+    data = st.session_state.tp_stock_data
 
     if data.get("nopat"):
         nopat = data["nopat"]
@@ -98,7 +115,7 @@ def render_three_phase_dcf_tab():
     market = data["current_price"]
     margin = (intrinsic - market) / market * 100
 
-    st.subheader(f"{data['company_name']} ({st.session_state.stock_ticker})")
+    st.subheader(f"{data['company_name']} ({st.session_state.tp_stock_ticker})")
     if data.get("sector") or data.get("industry"):
         st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
 
