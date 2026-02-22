@@ -1,57 +1,86 @@
 import pandas as pd
 import streamlit as st
 
-from apps.damodaran_dcf_app import run_damodaran_dcf
-from ui.utils import fmt_b, fmt_m
+from apps.damodaran_dcf_app import run_dcf_three_phase
+from ui.utils import fmt_b
 
 
-def render_damodaran_dcf_tab():
+def render_three_phase_dcf_tab():
     if "stock_data" not in st.session_state:
         st.info("Load a stock from the sidebar first.")
         return
 
     data = st.session_state.stock_data
 
-    # Use operating_cash_flow as NOPAT proxy (after-tax operating earnings before capex).
-    # FCF already has reinvestment deducted — we need the pre-reinvestment figure.
     nopat = data.get("operating_cash_flow") or data["fcf"]
     nopat_source = "Operating Cash Flow" if data.get("operating_cash_flow") else "FCF (fallback)"
 
-    # ── Inputs ────────────────────────────────────────────────────────────────
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        near_growth = st.slider("g — Near-term Growth (%)", 0, 100, 10, key="ddcf_g") / 100
-    with c2:
-        terminal_growth = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="ddcf_ginf") / 100
-    with c3:
-        wacc = st.slider("r — WACC (%)", 6.0, 15.0, 10.0, key="ddcf_r") / 100
-    with c4:
-        years = st.slider("n — Forecast Years", 3, 10, 5, key="ddcf_n")
-    with c5:
-        roic = st.slider("ROIC — Return on Invested Capital (%)", 5, 60, 20, key="ddcf_roic") / 100
+    # ── Phase Duration ─────────────────────────────────────────────────────────
+    st.markdown("**Phase Durations (years)**")
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        years_invest = st.slider("Investment Phase", 0, 10, 3, key="tp_yi")
+    with d2:
+        years_scale = st.slider("Scale Phase", 0, 10, 4, key="tp_ys")
+    with d3:
+        years_mature = st.slider("Mature Phase", 1, 15, 5, key="tp_ym")
+
+    total_years = years_invest + years_scale + years_mature
+    st.caption(f"Total forecast: **{total_years} years**  ·  "
+               f"Investment {years_invest}y → Scale {years_scale}y → Mature {years_mature}y")
+
+    st.divider()
+
+    # ── ROIC Inputs ────────────────────────────────────────────────────────────
+    st.markdown("**ROIC by Phase**")
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        roic_invest = st.slider("ROIC — Investment (%)", 1, 30, 8, key="tp_ri") / 100
+    with r2:
+        roic_peak = st.slider("ROIC — Scale Peak (%)", 10, 100, 40, key="tp_rp") / 100
+    with r3:
+        wacc = st.slider("r — WACC (%)", 6.0, 15.0, 10.0, key="tp_r") / 100
+
+    st.caption(
+        f"Mature phase: ROIC decays linearly from **{roic_peak * 100:.0f}%** → **{wacc * 100:.1f}% (WACC)** over {years_mature}y, "
+        f"eliminating terminal discontinuity."
+    )
+
+    st.divider()
+
+    # ── Growth & Other Inputs ──────────────────────────────────────────────────
+    st.markdown("**Growth & Valuation Parameters**")
+    g1, g2 = st.columns(2)
+    with g1:
+        g_start = st.slider("g — Initial Growth (%)", 0, 100, 30, key="tp_g") / 100
+    with g2:
+        g_terminal = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="tp_ginf") / 100
 
     issuance_price = data["current_price"]
     st.caption(
         f"NOPAT proxy: **{nopat_source}** = {fmt_b(nopat)}  ·  "
-        f"Terminal ROIC defaults to WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
+        f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
         f"⚠️ New shares assumed issued at current market price **${issuance_price:,.2f}**."
     )
 
-    if not st.button("Calculate Intrinsic Value", type="primary", key="ddcf_calc"):
+    if not st.button("Calculate Intrinsic Value", type="primary", key="tp_calc"):
         return
 
     try:
-        result = run_damodaran_dcf(
+        result = run_dcf_three_phase(
             nopat=nopat,
-            roic=roic,
-            g_start=near_growth,
-            g_terminal=terminal_growth,
+            roic_invest=roic_invest,
+            roic_peak=roic_peak,
+            g_start=g_start,
+            g_terminal=g_terminal,
             wacc=wacc,
             net_debt=data["net_debt"],
             shares_outstanding=data["shares_outstanding"],
-            years=years,
+            years_invest=years_invest,
+            years_scale=years_scale,
+            years_mature=years_mature,
             issuance_price=issuance_price,
-            roic_terminal=None,  # defaults to wacc inside the model
+            roic_terminal=None,  # defaults to wacc
         )
     except ValueError as e:
         st.error(str(e))
@@ -70,43 +99,48 @@ def render_damodaran_dcf_tab():
         fcol, acol = st.columns([3, 2])
 
         with fcol:
-            st.markdown("**Damodaran ROIC-Based DCF Formula**")
+            st.markdown("**Three-Phase ROIC DCF**")
             st.latex(r"""
-                \text{Reinvestment Rate}_t = \frac{g_t}{\text{ROIC}}
+                \text{ROIC}_t = \begin{cases}
+                    \text{ROIC}_\text{invest} \to \text{ROIC}_\text{peak} & \text{(Investment)} \\
+                    \text{ROIC}_\text{peak} & \text{(Scale)} \\
+                    \text{ROIC}_\text{peak} \to r & \text{(Mature)}
+                \end{cases}
             """)
             st.latex(r"""
-                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}}\right)
+                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}_t}\right)
             """)
             st.latex(r"""
-                P = \sum_{t=1}^{n} \frac{FCF_t}{(1+r)^t}
-                    + \frac{TV}{(1+r)^n}
+                P = \sum_{t=1}^{N} \frac{FCF_t}{(1+r)^t}
+                    + \frac{TV}{(1+r)^N}
                     - \text{Net Debt}
             """)
             st.markdown("Where:")
             st.markdown(r"""
 | Symbol | Description |
 |---|---|
-| $NOPAT_0$ | Net Operating Profit After Tax (base year) |
-| $NOPAT_t$ | $NOPAT_0 \times \prod_{s=1}^{t}(1 + g_s)$ |
-| $g_t$ | Growth rate at year $t$, declines linearly from $g$ to $g_\infty$ |
-| $\text{ROIC}$ | Return on Invested Capital — efficiency of growth |
-| $TV$ | Terminal Value $= \dfrac{FCF_n \times (1 + g_\infty)}{r - g_\infty}$, with $\text{ROIC}_\infty = r$ |
+| $\text{ROIC}_t$ | Piecewise-linear ROIC: invest → peak → WACC |
+| $g_t$ | Growth, declines linearly from $g$ to $g_\infty$ across all phases |
+| $TV$ | $\dfrac{FCF_N \times (1+g_\infty)}{r - g_\infty}$, with $\text{ROIC}_N = r$ |
 | $r$ | WACC — Discount Rate |
 | Net Debt | Total Debt − Cash & Equivalents |
 """)
 
         with acol:
-            st.markdown("**Assumptions Used in This Calculation**")
+            st.markdown("**Assumptions Used**")
             for label, value in [
-                (f"NOPAT₀ — Base ({nopat_source})", fmt_b(nopat)),
-                ("ROIC — Return on Invested Capital", f"{roic * 100:.1f}%"),
-                ("Terminal ROIC",                     f"{wacc * 100:.1f}% (= WACC)"),
-                ("g — Near-term Growth Rate",          f"{near_growth * 100:.1f}%"),
-                ("g∞ — Terminal Growth Rate",          f"{terminal_growth * 100:.1f}%"),
-                ("r — WACC (Discount Rate)",           f"{wacc * 100:.1f}%"),
-                ("n — Forecast Years",                 f"{years} years"),
-                ("Net Debt",                           fmt_b(data['net_debt'])),
-                ("Shares Outstanding",                 f"{data['shares_outstanding'] / 1e9:.2f}B"),
+                (f"NOPAT₀ ({nopat_source})",        fmt_b(nopat)),
+                ("ROIC — Investment phase",          f"{roic_invest * 100:.1f}%"),
+                ("ROIC — Scale peak",                f"{roic_peak * 100:.1f}%"),
+                ("ROIC — Terminal (= WACC)",         f"{wacc * 100:.1f}%"),
+                ("g — Initial Growth Rate",          f"{g_start * 100:.1f}%"),
+                ("g∞ — Terminal Growth Rate",        f"{g_terminal * 100:.1f}%"),
+                ("r — WACC",                         f"{wacc * 100:.1f}%"),
+                ("Years — Investment",               str(years_invest)),
+                ("Years — Scale",                    str(years_scale)),
+                ("Years — Mature",                   str(years_mature)),
+                ("Net Debt",                         fmt_b(data["net_debt"])),
+                ("Shares Outstanding",               f"{data['shares_outstanding'] / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
 
@@ -140,22 +174,25 @@ def render_damodaran_dcf_tab():
     df["New Shares Issued (M)"] = df["New Shares Issued (M)"].map("{:.2f}".format)
     df["Diluted Shares (M)"] = df["Diluted Shares (M)"].map("{:.3f}".format)
     df = df.drop(columns=["Discount Factor"])
+
     year0 = pd.DataFrame([{
         "Year": 0,
-        "NOPAT ($B)": f"{nopat / 1e9:.2f}",
+        "Phase": "—",
         "Growth Rate": "—",
+        "ROIC": "—",
         "Reinvestment Rate": "—",
+        "NOPAT ($B)": f"{nopat / 1e9:.2f}",
         "Reinvestment ($B)": "—",
         "FCF ($B)": "—",
         "Equity Raised ($B)": "—",
         "Debt Raised ($B)": "—",
         "New Shares Issued (M)": "—",
-        "Diluted Shares (M)": f"{data['shares_outstanding'] / 1e6:.2f}",
+        "Diluted Shares (M)": f"{data['shares_outstanding'] / 1e6:.3f}",
         "PV of FCF ($B)": "—",
     }])
     df = pd.concat([year0, df], ignore_index=True)
     df = df[[
-        "Year", "NOPAT ($B)", "Growth Rate", "Reinvestment Rate",
+        "Year", "Phase", "NOPAT ($B)", "Growth Rate", "ROIC", "Reinvestment Rate",
         "Reinvestment ($B)", "FCF ($B)",
         "Equity Raised ($B)", "Debt Raised ($B)",
         "New Shares Issued (M)", "Diluted Shares (M)", "PV of FCF ($B)",
@@ -168,19 +205,21 @@ def render_damodaran_dcf_tab():
     terminal_rr = result["terminal_reinvestment_rate"]
     summary_df = pd.DataFrame([
         (f"NOPAT₀ — Base ({nopat_source})",    fmt_b(nopat)),
-        ("ROIC — Near-term",                    f"{roic * 100:.1f}%"),
+        ("ROIC — Investment phase",             f"{roic_invest * 100:.1f}%"),
+        ("ROIC — Scale peak",                   f"{roic_peak * 100:.1f}%"),
         ("ROIC — Terminal (= WACC)",            f"{wacc * 100:.1f}%"),
-        ("g — Near-term Growth Rate",           f"{near_growth * 100:.1f}%"),
-        ("g∞ — Terminal Growth Rate",           f"{terminal_growth * 100:.1f}%"),
+        ("g — Initial Growth Rate",             f"{g_start * 100:.1f}%"),
+        ("g∞ — Terminal Growth Rate",           f"{g_terminal * 100:.1f}%"),
         ("r — WACC (Discount Rate)",            f"{wacc * 100:.1f}%"),
-        ("n — Forecast Years",                  str(years)),
+        ("Years — Investment / Scale / Mature", f"{years_invest} / {years_scale} / {years_mature}"),
+        ("Total Forecast Years",                str(total_years)),
         ("Terminal Reinvestment Rate",          f"{terminal_rr * 100:.1f}%"),
         ("Terminal FCF",                        fmt_b(result["terminal_fcf"])),
-        ("PV of FCFs",                          fmt_b(result['pv_fcfs'])),
-        ("PV of Terminal Value (TV)",           fmt_b(result['pv_terminal'])),
-        ("Enterprise Value (EV)",               fmt_b(result['enterprise_value'])),
-        ("Net Debt",                            fmt_b(data['net_debt'])),
-        ("Equity Value (EV − Net Debt)",        fmt_b(result['equity_value'])),
+        ("PV of FCFs",                          fmt_b(result["pv_fcfs"])),
+        ("PV of Terminal Value (TV)",           fmt_b(result["pv_terminal"])),
+        ("Enterprise Value (EV)",               fmt_b(result["enterprise_value"])),
+        ("Net Debt",                            fmt_b(data["net_debt"])),
+        ("Equity Value (EV − Net Debt)",        fmt_b(result["equity_value"])),
         ("Shares Outstanding (base)",           f"{data['shares_outstanding'] / 1e6:.2f}M"),
         ("New Shares Issued (dilution)",        f"{result['total_new_shares'] / 1e6:.2f}M"),
         ("Diluted Shares (terminal)",           f"{result['diluted_shares'] / 1e6:.2f}M"),
