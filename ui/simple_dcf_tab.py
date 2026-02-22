@@ -2,15 +2,33 @@ import pandas as pd
 import streamlit as st
 
 import apps.dcf_app as dcf_app
+import datasource.fetcher as fetcher
 import ui.utils as utils
 
 
 def render_simple_dcf_tab():
-    if "stock_data" not in st.session_state:
-        st.info("Load a stock from the sidebar first.")
+    tc, bc = st.columns([3, 1])
+    with tc:
+        ticker = st.text_input("Ticker Symbol", value="AAPL", key="sdcf_ticker_input").upper().strip()
+    with bc:
+        st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+        load = st.button("Load", type="primary", key="sdcf_load", use_container_width=True)
+
+    if load and ticker:
+        with st.spinner(f"Fetching {ticker}..."):
+            try:
+                st.session_state.sdcf_stock_data = fetcher.fetch_stock_data(ticker)
+                st.session_state.sdcf_stock_ticker = ticker
+            except ValueError as e:
+                st.error(str(e))
+                return
+
+    if "sdcf_stock_data" not in st.session_state:
+        st.info("Enter a ticker and click Load.")
         return
 
-    data = st.session_state.stock_data
+    data = st.session_state.sdcf_stock_data
+    loaded_ticker = st.session_state.sdcf_stock_ticker
 
     # ── Inputs ────────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -28,12 +46,12 @@ def render_simple_dcf_tab():
 
     try:
         result = dcf_app.run_dcf(
-            fcf=data["fcf"],
+            fcf=data.fcf,
             near_growth=near_growth,
             wacc=wacc,
             terminal_growth=terminal_growth,
-            net_debt=data["net_debt"],
-            shares_outstanding=data["shares_outstanding"],
+            net_debt=data.net_debt,
+            shares_outstanding=data.shares_outstanding,
             years=years,
         )
     except ValueError as e:
@@ -41,12 +59,12 @@ def render_simple_dcf_tab():
         return
 
     intrinsic = result["intrinsic_price"]
-    market = data["current_price"]
+    market = data.current_price
     margin = (intrinsic - market) / market * 100
 
-    st.subheader(f"{data['company_name']} ({st.session_state.stock_ticker})")
-    if data.get("sector") or data.get("industry"):
-        st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
+    st.subheader(f"{data.company_name} ({loaded_ticker})")
+    if data.sector or data.industry:
+        st.caption(f"{data.sector or ''}  ·  {data.industry or ''}")
 
     # ── Formula & Assumptions ──────────────────────────────────────────────────
     with st.expander("📐 Formula & Assumptions Used", expanded=True):
@@ -76,13 +94,13 @@ def render_simple_dcf_tab():
         with acol:
             st.markdown("**Assumptions Used in This Calculation**")
             for label, value in [
-                ("FCF₀ — Base Free Cash Flow",    utils.fmt_b(data['fcf'])),
+                ("FCF₀ — Base Free Cash Flow",    utils.fmt_b(data.fcf)),
                 ("g — Near-term Growth Rate",      f"{near_growth * 100:.1f}%"),
                 ("g∞ — Terminal Growth Rate",      f"{terminal_growth * 100:.1f}%"),
                 ("r — WACC (Discount Rate)",       f"{wacc * 100:.1f}%"),
                 ("n — Forecast Years",             f"{years} years"),
-                ("Net Debt",                       utils.fmt_b(data['net_debt'])),
-                ("Shares Outstanding",             f"{data['shares_outstanding'] / 1e9:.2f}B"),
+                ("Net Debt",                       utils.fmt_b(data.net_debt)),
+                ("Shares Outstanding",             f"{data.shares_outstanding / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
 
@@ -124,7 +142,7 @@ def render_simple_dcf_tab():
     st.divider()
     st.subheader("DCF Summary")
     summary_df = pd.DataFrame([
-        ("FCF₀ — Base Free Cash Flow",         utils.fmt_b(data['fcf'])),
+        ("FCF₀ — Base Free Cash Flow",         utils.fmt_b(data.fcf)),
         ("g — Near-term Growth Rate",           f"{near_growth * 100:.1f}%"),
         ("g∞ — Terminal Growth Rate",           f"{terminal_growth * 100:.1f}%"),
         ("r — WACC (Discount Rate)",            f"{wacc * 100:.1f}%"),
@@ -132,9 +150,9 @@ def render_simple_dcf_tab():
         ("PV of FCFs",                          utils.fmt_b(result['pv_fcfs'])),
         ("PV of Terminal Value (TV)",           utils.fmt_b(result['pv_terminal'])),
         ("Enterprise Value (EV)",               utils.fmt_b(result['enterprise_value'])),
-        ("Net Debt",                            utils.fmt_b(data['net_debt'])),
+        ("Net Debt",                            utils.fmt_b(data.net_debt)),
         ("Equity Value (EV − Net Debt)",        utils.fmt_b(result['equity_value'])),
-        ("Shares Outstanding",                  f"{data['shares_outstanding'] / 1e9:.2f}B"),
+        ("Shares Outstanding",                  f"{data.shares_outstanding / 1e9:.2f}B"),
         ("Intrinsic Value per Share",           f"${intrinsic:.2f}"),
         ("Current Price per Share",             f"${market:.2f}"),
     ], columns=["Item", "Value"])
@@ -152,11 +170,11 @@ def render_simple_dcf_tab():
     )
 
     sim = dcf_app.run_dcf_simulation(
-        fcf=data["fcf"],
+        fcf=data.fcf,
         near_growth=near_growth,
         wacc=wacc,
-        net_debt=data["net_debt"],
-        shares_outstanding=data["shares_outstanding"],
+        net_debt=data.net_debt,
+        shares_outstanding=data.shares_outstanding,
     )
 
     sim_df = pd.DataFrame(

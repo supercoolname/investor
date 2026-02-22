@@ -6,34 +6,35 @@ import datasource.fetcher as fetcher
 import ui.utils as utils
 
 
-def _render_stock_info(data: dict, ticker: str):
-    st.markdown(f"**{data['company_name']}** ({ticker})")
-    if data.get("sector") or data.get("industry"):
-        st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
+def _render_stock_info(data, ticker: str):
+    st.markdown(f"**{data.company_name}** ({ticker})")
+    if data.sector or data.industry:
+        st.caption(f"{data.sector or ''}  ·  {data.industry or ''}")
 
     st.markdown("**Income Statement**")
-    st.markdown(f"- EBIT: **{utils.fmt_b(data.get('ebit'))}**")
-    tax_str = f"{data['effective_tax_rate'] * 100:.1f}%" if data.get('effective_tax_rate') else "N/A"
+    st.markdown(f"- EBIT: **{utils.fmt_b(data.ebit)}**")
+    tax_str = f"{data.effective_tax_rate * 100:.1f}%" if data.effective_tax_rate else "N/A"
     st.markdown(f"- Eff. Tax Rate: **{tax_str}**")
-    st.markdown(f"- NOPAT: **{utils.fmt_b(data.get('nopat'))}**")
+    st.markdown(f"- NOPAT: **{utils.fmt_b(data.nopat)}**")
 
     st.markdown("**Cash Flow Statement**")
-    st.markdown(f"- Op CF: **{utils.fmt_b(data.get('operating_cash_flow'))}**")
-    st.markdown(f"- CapEx: **{utils.fmt_b(data.get('capex'))}**")
-    st.markdown(f"- FCF₀: **{utils.fmt_b(data['fcf'])}**")
+    st.markdown(f"- Op CF: **{utils.fmt_b(data.operating_cash_flow)}**")
+    st.markdown(f"- CapEx: **{utils.fmt_b(data.capex)}**")
+    st.markdown(f"- SBC: **{utils.fmt_b(data.sbc)}**")
+    st.markdown(f"- FCF₀: **{utils.fmt_b(data.fcf)}**")
 
     st.markdown("**Balance Sheet**")
-    st.markdown(f"- Total Debt: **{utils.fmt_b(data['total_debt'])}**")
-    st.markdown(f"- Cash: **{utils.fmt_b(data['cash'])}**")
-    st.markdown(f"- Net Debt: **{utils.fmt_b(data['net_debt'])}**")
-    st.markdown(f"- Shares: **{data['shares_outstanding'] / 1e9:.2f}B**")
+    st.markdown(f"- Total Debt: **{utils.fmt_b(data.total_debt)}**")
+    st.markdown(f"- Cash: **{utils.fmt_b(data.cash)}**")
+    st.markdown(f"- Net Debt: **{utils.fmt_b(data.net_debt)}**")
+    st.markdown(f"- Shares: **{data.shares_outstanding / 1e9:.2f}B**")
 
     st.markdown("**Market Data**")
-    st.markdown(f"- Price: **${data['current_price']:,.2f}**")
-    st.markdown(f"- Mkt Cap: **{utils.fmt_b(data.get('market_cap'))}**")
-    st.markdown(f"- Revenue: **{utils.fmt_b(data.get('revenue'))}**")
-    st.markdown(f"- EBITDA: **{utils.fmt_b(data.get('ebitda'))}**")
-    st.markdown(f"- P/E: **{utils.fmt_x(data.get('pe_ratio'))}**")
+    st.markdown(f"- Price: **${data.current_price:,.2f}**")
+    st.markdown(f"- Mkt Cap: **{utils.fmt_b(data.market_cap)}**")
+    st.markdown(f"- Revenue: **{utils.fmt_b(data.revenue)}**")
+    st.markdown(f"- EBITDA: **{utils.fmt_b(data.ebitda)}**")
+    st.markdown(f"- P/E: **{utils.fmt_x(data.pe_ratio)}**")
 
 
 def render_three_phase_dcf_tab():
@@ -60,15 +61,15 @@ def render_three_phase_dcf_tab():
     data = st.session_state.tp_stock_data
     loaded_ticker = st.session_state.tp_stock_ticker
 
-    if data.get("nopat"):
-        nopat = data["nopat"]
-        tax_pct = f"{data['effective_tax_rate'] * 100:.1f}%" if data.get("effective_tax_rate") else "N/A"
+    if data.nopat:
+        nopat = data.nopat
+        tax_pct = f"{data.effective_tax_rate * 100:.1f}%" if data.effective_tax_rate else "N/A"
         nopat_source = f"EBIT × (1 − {tax_pct})"
-    elif data.get("operating_cash_flow"):
-        nopat = data["operating_cash_flow"]
+    elif data.operating_cash_flow:
+        nopat = data.operating_cash_flow
         nopat_source = "Operating Cash Flow (EBIT unavailable)"
     else:
-        nopat = data["fcf"]
+        nopat = data.fcf
         nopat_source = "FCF (fallback)"
 
     # ── Two-column layout: inputs left, stock data right ───────────────────────
@@ -119,7 +120,7 @@ def render_three_phase_dcf_tab():
         with g2:
             g_terminal = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="tp_ginf") / 100
 
-        issuance_price = data["current_price"]
+        issuance_price = data.current_price
         st.caption(
             f"NOPAT proxy: **{nopat_source}** = {utils.fmt_b(nopat)}  ·  "
             f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
@@ -140,8 +141,8 @@ def render_three_phase_dcf_tab():
             g_start=g_start,
             g_terminal=g_terminal,
             wacc=wacc,
-            net_debt=data["net_debt"],
-            shares_outstanding=data["shares_outstanding"],
+            net_debt=data.net_debt,
+            shares_outstanding=data.shares_outstanding,
             years_invest=years_invest,
             years_scale=years_scale,
             years_mature=years_mature,
@@ -153,12 +154,12 @@ def render_three_phase_dcf_tab():
         return
 
     intrinsic = result["intrinsic_price"]
-    market = data["current_price"]
+    market = data.current_price
     margin = (intrinsic - market) / market * 100
 
-    st.subheader(f"{data['company_name']} ({loaded_ticker})")
-    if data.get("sector") or data.get("industry"):
-        st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
+    st.subheader(f"{data.company_name} ({loaded_ticker})")
+    if data.sector or data.industry:
+        st.caption(f"{data.sector or ''}  ·  {data.industry or ''}")
 
     # ── Key metrics ────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
@@ -193,7 +194,7 @@ def render_three_phase_dcf_tab():
         "Equity Raised ($B)": "—",
         "Debt Raised ($B)": "—",
         "New Shares Issued (M)": "—",
-        "Diluted Shares (M)": f"{data['shares_outstanding'] / 1e6:.3f}",
+        "Diluted Shares (M)": f"{data.shares_outstanding / 1e6:.3f}",
         "PV of FCF ($B)": "—",
     }])
     terminal_rr = result["terminal_reinvestment_rate"]
@@ -268,9 +269,9 @@ def render_three_phase_dcf_tab():
         ("PV of FCFs",                          utils.fmt_b(result["pv_fcfs"])),
         ("PV of Terminal Value (TV)",           utils.fmt_b(result["pv_terminal"])),
         ("Enterprise Value (EV)",               utils.fmt_b(result["enterprise_value"])),
-        ("Net Debt",                            utils.fmt_b(data["net_debt"])),
+        ("Net Debt",                            utils.fmt_b(data.net_debt)),
         ("Equity Value (EV − Net Debt)",        utils.fmt_b(result["equity_value"])),
-        ("Shares Outstanding (base)",           f"{data['shares_outstanding'] / 1e6:.2f}M"),
+        ("Shares Outstanding (base)",           f"{data.shares_outstanding / 1e6:.2f}M"),
         ("New Shares Issued (dilution)",        f"{result['total_new_shares'] / 1e6:.2f}M"),
         ("Diluted Shares (terminal)",           f"{result['diluted_shares'] / 1e6:.2f}M"),
         ("Issuance Price (assumption)",         f"${result['issuance_price']:,.2f}"),
@@ -290,8 +291,8 @@ def render_three_phase_dcf_tab():
         g_start=g_start,
         g_terminal=g_terminal,
         wacc=wacc,
-        net_debt=data["net_debt"],
-        shares_outstanding=data["shares_outstanding"],
+        net_debt=data.net_debt,
+        shares_outstanding=data.shares_outstanding,
         years_invest=years_invest,
         years_scale=years_scale,
         years_mature=years_mature,
@@ -379,7 +380,7 @@ def render_three_phase_dcf_tab():
                 ("Years — Investment",               str(years_invest)),
                 ("Years — Scale",                    str(years_scale)),
                 ("Years — Mature",                   str(years_mature)),
-                ("Net Debt",                         utils.fmt_b(data["net_debt"])),
-                ("Shares Outstanding",               f"{data['shares_outstanding'] / 1e9:.2f}B"),
+                ("Net Debt",                         utils.fmt_b(data.net_debt)),
+                ("Shares Outstanding",               f"{data.shares_outstanding / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
