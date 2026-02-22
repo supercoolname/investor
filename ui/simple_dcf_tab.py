@@ -5,7 +5,7 @@ from apps.dcf_app import run_dcf, run_dcf_simulation
 from ui.utils import fmt_b
 
 
-def render_dcf_tab():
+def render_simple_dcf_tab():
     if "stock_data" not in st.session_state:
         st.info("Load a stock from the sidebar first.")
         return

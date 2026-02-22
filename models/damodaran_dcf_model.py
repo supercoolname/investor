@@ -71,9 +71,7 @@ def _damodaran_dcf(
 
         current_nopat *= (1 + g_t)
 
-        # Reinvestment rate clamped to [0, 1] — high early growth can temporarily
-        # exceed ROIC but FCF should not go negative in the projection.
-        reinvestment_rate = min(max(g_t / roic, 0.0), 1.0)
+        reinvestment_rate = g_t / roic
         reinvestment = current_nopat * reinvestment_rate
         fcf_t = current_nopat - reinvestment
 

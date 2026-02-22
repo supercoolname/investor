@@ -8,7 +8,7 @@ Run with:
 import streamlit as st
 
 from ui.sidebar import render_sidebar
-from ui.dcf_tab import render_dcf_tab
+from ui.simple_dcf_tab import render_simple_dcf_tab
 from ui.damodaran_dcf_tab import render_damodaran_dcf_tab
 from ui.reverse_dcf_tab import render_reverse_dcf_tab
 
@@ -19,10 +19,10 @@ st.caption("Discounted Cash Flow model powered by Yahoo Finance data")
 
 render_sidebar()
 
-tab_dcf, tab_damodaran, tab_reverse = st.tabs(["📈 DCF Valuation", "🏗️ Damodaran DCF", "🔄 Reverse DCF"])
+tab_dcf, tab_damodaran, tab_reverse = st.tabs(["📈 Simple DCF", "🏗️ Damodaran DCF", "🔄 Reverse DCF"])
 
 with tab_dcf:
-    render_dcf_tab()
+    render_simple_dcf_tab()
 
 with tab_damodaran:
     render_damodaran_dcf_tab()

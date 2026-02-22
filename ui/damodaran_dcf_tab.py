@@ -20,7 +20,7 @@ def render_damodaran_dcf_tab():
     # ── Inputs ────────────────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        near_growth = st.slider("g — Near-term Growth (%)", 0, 30, 10, key="ddcf_g") / 100
+        near_growth = st.slider("g — Near-term Growth (%)", 0, 100, 10, key="ddcf_g") / 100
     with c2:
         terminal_growth = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="ddcf_ginf") / 100
     with c3:
@@ -120,30 +120,39 @@ def render_damodaran_dcf_tab():
 
     st.divider()
 
-    # ── Chart + Year-by-year table ─────────────────────────────────────────────
-    col_chart, col_table = st.columns(2)
+    # ── Chart ──────────────────────────────────────────────────────────────────
+    st.subheader("Value Breakdown")
+    chart_data = pd.DataFrame({
+        "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
+        "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
+    }).set_index("Component")
+    st.bar_chart(chart_data)
 
-    with col_chart:
-        st.subheader("Value Breakdown")
-        chart_data = pd.DataFrame({
-            "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
-            "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
-        }).set_index("Component")
-        st.bar_chart(chart_data)
-
-    with col_table:
-        st.subheader("Year-by-Year Breakdown")
-        df = pd.DataFrame(result["rows"])
-        for col in ["NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)", "PV of FCF ($B)"]:
-            df[col] = df[col].map("{:.2f}".format)
-        df["Discount Factor (1+r)^t"] = df["Discount Factor"].map("{:.3f}".format)
-        df = df.drop(columns=["Discount Factor"])
-        df = df[[
-            "Year", "Growth Rate", "Reinvestment Rate",
-            "NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)",
-            "Discount Factor (1+r)^t", "PV of FCF ($B)",
-        ]]
-        st.dataframe(df, hide_index=True, use_container_width=True)
+    # ── Year-by-year table ─────────────────────────────────────────────────────
+    st.subheader("Year-by-Year Breakdown")
+    df = pd.DataFrame(result["rows"])
+    df["Additional Capital Required ($B)"] = df["FCF ($B)"].apply(lambda x: max(-x, 0.0))
+    for col in ["NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)",
+                "Additional Capital Required ($B)", "PV of FCF ($B)"]:
+        df[col] = df[col].map("{:.2f}".format)
+    df = df.drop(columns=["Discount Factor"])
+    year0 = pd.DataFrame([{
+        "Year": 0,
+        "NOPAT ($B)": f"{nopat / 1e9:.2f}",
+        "Growth Rate": "—",
+        "Reinvestment Rate": "—",
+        "Reinvestment ($B)": "—",
+        "FCF ($B)": "—",
+        "Additional Capital Required ($B)": "—",
+        "PV of FCF ($B)": "—",
+    }])
+    df = pd.concat([year0, df], ignore_index=True)
+    df = df[[
+        "Year", "NOPAT ($B)", "Growth Rate", "Reinvestment Rate",
+        "Reinvestment ($B)", "FCF ($B)",
+        "Additional Capital Required ($B)", "PV of FCF ($B)",
+    ]]
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
     # ── Summary table ──────────────────────────────────────────────────────────
     st.divider()
