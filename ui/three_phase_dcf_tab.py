@@ -6,6 +6,36 @@ import datasource.fetcher as fetcher
 import ui.utils as utils
 
 
+def _render_stock_info(data: dict, ticker: str):
+    st.markdown(f"**{data['company_name']}** ({ticker})")
+    if data.get("sector") or data.get("industry"):
+        st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
+
+    st.markdown("**Income Statement**")
+    st.markdown(f"- EBIT: **{utils.fmt_b(data.get('ebit'))}**")
+    tax_str = f"{data['effective_tax_rate'] * 100:.1f}%" if data.get('effective_tax_rate') else "N/A"
+    st.markdown(f"- Eff. Tax Rate: **{tax_str}**")
+    st.markdown(f"- NOPAT: **{utils.fmt_b(data.get('nopat'))}**")
+
+    st.markdown("**Cash Flow Statement**")
+    st.markdown(f"- Op CF: **{utils.fmt_b(data.get('operating_cash_flow'))}**")
+    st.markdown(f"- CapEx: **{utils.fmt_b(data.get('capex'))}**")
+    st.markdown(f"- FCF₀: **{utils.fmt_b(data['fcf'])}**")
+
+    st.markdown("**Balance Sheet**")
+    st.markdown(f"- Total Debt: **{utils.fmt_b(data['total_debt'])}**")
+    st.markdown(f"- Cash: **{utils.fmt_b(data['cash'])}**")
+    st.markdown(f"- Net Debt: **{utils.fmt_b(data['net_debt'])}**")
+    st.markdown(f"- Shares: **{data['shares_outstanding'] / 1e9:.2f}B**")
+
+    st.markdown("**Market Data**")
+    st.markdown(f"- Price: **${data['current_price']:,.2f}**")
+    st.markdown(f"- Mkt Cap: **{utils.fmt_b(data.get('market_cap'))}**")
+    st.markdown(f"- Revenue: **{utils.fmt_b(data.get('revenue'))}**")
+    st.markdown(f"- EBITDA: **{utils.fmt_b(data.get('ebitda'))}**")
+    st.markdown(f"- P/E: **{utils.fmt_x(data.get('pe_ratio'))}**")
+
+
 def render_three_phase_dcf_tab():
     tc, bc = st.columns([3, 1])
     with tc:
@@ -28,6 +58,7 @@ def render_three_phase_dcf_tab():
         return
 
     data = st.session_state.tp_stock_data
+    loaded_ticker = st.session_state.tp_stock_ticker
 
     if data.get("nopat"):
         nopat = data["nopat"]
@@ -40,57 +71,67 @@ def render_three_phase_dcf_tab():
         nopat = data["fcf"]
         nopat_source = "FCF (fallback)"
 
-    # ── Phase Duration ─────────────────────────────────────────────────────────
-    st.markdown("**Phase Durations (years)**")
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        years_invest = st.slider("Investment Phase", 0, 10, 3, key="tp_yi")
-    with d2:
-        years_scale = st.slider("Scale Phase", 0, 10, 4, key="tp_ys")
-    with d3:
-        years_mature = st.slider("Mature Phase", 1, 15, 5, key="tp_ym")
+    # ── Two-column layout: inputs left, stock data right ───────────────────────
+    left, right = st.columns([2, 1])
 
-    total_years = years_invest + years_scale + years_mature
-    st.caption(f"Total forecast: **{total_years} years**  ·  "
-               f"Investment {years_invest}y → Scale {years_scale}y → Mature {years_mature}y")
+    with right:
+        _render_stock_info(data, loaded_ticker)
 
-    st.divider()
+    with left:
+        # ── Phase Duration ──────────────────────────────────────────────────────
+        st.markdown("**Phase Durations (years)**")
+        d1, d2, d3 = st.columns(3)
+        with d1:
+            years_invest = st.slider("Investment Phase", 0, 10, 3, key="tp_yi")
+        with d2:
+            years_scale = st.slider("Scale Phase", 0, 10, 4, key="tp_ys")
+        with d3:
+            years_mature = st.slider("Mature Phase", 1, 15, 5, key="tp_ym")
 
-    # ── ROIC Inputs ────────────────────────────────────────────────────────────
-    st.markdown("**ROIC by Phase**")
-    r1, r2, r3 = st.columns(3)
-    with r1:
-        roic_invest = st.slider("ROIC — Investment (%)", 1, 30, 8, key="tp_ri") / 100
-    with r2:
-        roic_peak = st.slider("ROIC — Scale Peak (%)", 10, 100, 40, key="tp_rp") / 100
-    with r3:
-        wacc = st.slider("r — WACC (%)", 6.0, 15.0, 10.0, key="tp_r") / 100
+        total_years = years_invest + years_scale + years_mature
+        st.caption(f"Total forecast: **{total_years} years**  ·  "
+                   f"Investment {years_invest}y → Scale {years_scale}y → Mature {years_mature}y")
 
-    st.caption(
-        f"Mature phase: ROIC decays linearly from **{roic_peak * 100:.0f}%** → **{wacc * 100:.1f}% (WACC)** over {years_mature}y, "
-        f"eliminating terminal discontinuity."
-    )
+        st.divider()
 
-    st.divider()
+        # ── ROIC Inputs ─────────────────────────────────────────────────────────
+        st.markdown("**ROIC by Phase**")
+        r1, r2, r3 = st.columns(3)
+        with r1:
+            roic_invest = st.slider("ROIC — Investment (%)", 1, 30, 8, key="tp_ri") / 100
+        with r2:
+            roic_peak = st.slider("ROIC — Scale Peak (%)", 10, 100, 40, key="tp_rp") / 100
+        with r3:
+            wacc = st.slider("r — WACC (%)", 6.0, 15.0, 10.0, key="tp_r") / 100
 
-    # ── Growth & Other Inputs ──────────────────────────────────────────────────
-    st.markdown("**Growth & Valuation Parameters**")
-    g1, g2 = st.columns(2)
-    with g1:
-        g_start = st.slider("g — Initial Growth (%)", 0, 100, 30, key="tp_g") / 100
-    with g2:
-        g_terminal = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="tp_ginf") / 100
+        st.caption(
+            f"Mature phase: ROIC decays linearly from **{roic_peak * 100:.0f}%** → "
+            f"**{wacc * 100:.1f}% (WACC)** over {years_mature}y, eliminating terminal discontinuity."
+        )
 
-    issuance_price = data["current_price"]
-    st.caption(
-        f"NOPAT proxy: **{nopat_source}** = {utils.fmt_b(nopat)}  ·  "
-        f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
-        f"⚠️ New shares assumed issued at current market price **${issuance_price:,.2f}**."
-    )
+        st.divider()
 
-    if not st.button("Calculate Intrinsic Value", type="primary", key="tp_calc"):
+        # ── Growth & Other Inputs ───────────────────────────────────────────────
+        st.markdown("**Growth & Valuation Parameters**")
+        g1, g2 = st.columns(2)
+        with g1:
+            g_start = st.slider("g — Initial Growth (%)", 0, 100, 30, key="tp_g") / 100
+        with g2:
+            g_terminal = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="tp_ginf") / 100
+
+        issuance_price = data["current_price"]
+        st.caption(
+            f"NOPAT proxy: **{nopat_source}** = {utils.fmt_b(nopat)}  ·  "
+            f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
+            f"⚠️ New shares assumed issued at current market price **${issuance_price:,.2f}**."
+        )
+
+        calc_clicked = st.button("Calculate Intrinsic Value", type="primary", key="tp_calc")
+
+    if not calc_clicked:
         return
 
+    # ── Results (full width) ───────────────────────────────────────────────────
     try:
         result = damodaran_dcf_app.run_dcf_three_phase(
             nopat=nopat,
@@ -115,7 +156,7 @@ def render_three_phase_dcf_tab():
     market = data["current_price"]
     margin = (intrinsic - market) / market * 100
 
-    st.subheader(f"{data['company_name']} ({st.session_state.tp_stock_ticker})")
+    st.subheader(f"{data['company_name']} ({loaded_ticker})")
     if data.get("sector") or data.get("industry"):
         st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
 
@@ -155,7 +196,6 @@ def render_three_phase_dcf_tab():
         "Diluted Shares (M)": f"{data['shares_outstanding'] / 1e6:.3f}",
         "PV of FCF ($B)": "—",
     }])
-    # Two illustrative terminal rows (not summed into valuation)
     terminal_rr = result["terminal_reinvestment_rate"]
     tv_nopat1 = result["terminal_nopat"]
     tv_nopat2 = tv_nopat1 * (1 + g_terminal)
@@ -257,7 +297,7 @@ def render_three_phase_dcf_tab():
         years_mature=years_mature,
         issuance_price=issuance_price,
         roic_terminal=None,
-        base_price=result["intrinsic_price"],  # reuse already-computed value
+        base_price=result["intrinsic_price"],
     )
 
     if sens:
@@ -270,11 +310,9 @@ def render_three_phase_dcf_tab():
                 help="% change in intrinsic value per +1pp change in this parameter",
             )
 
-        # Horizontal bar chart of all parameters
         sens_df = pd.DataFrame(sens).set_index("parameter")
         st.bar_chart(sens_df["sensitivity"])
 
-        # Auto-generated interpretation based on #1 parameter
         _captions = {
             "WACC (r)":             "WACC dominates: most value sits in the terminal period — typical of high-growth companies where early FCFs are negative.",
             "Terminal Growth (g∞)": "Terminal growth dominates: the Gordon Growth spread (r − g∞) is small, so a 1pp shift amplifies dramatically.",
@@ -284,8 +322,7 @@ def render_three_phase_dcf_tab():
             "ROIC — Investment":    "Investment-phase ROIC dominates: early capital efficiency determines how quickly the company reaches scale.",
         }
         top_param = top3[0]["parameter"]
-        caption = _captions.get(top_param, f"{top_param} is the dominant value driver for this configuration.")
-        st.caption(caption)
+        st.caption(_captions.get(top_param, f"{top_param} is the dominant value driver for this configuration."))
 
     st.divider()
 
