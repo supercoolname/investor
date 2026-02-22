@@ -153,13 +153,54 @@ def render_damodaran_dcf_tab():
         "Diluted Shares (M)": f"{data['shares_outstanding'] / 1e6:.2f}",
         "PV of FCF ($B)": "—",
     }])
-    df = pd.concat([year0, df], ignore_index=True)
+    # Two illustrative terminal rows (not summed into valuation)
+    terminal_rr = result["terminal_reinvestment_rate"]
+    tv_nopat1 = result["terminal_nopat"]
+    tv_nopat2 = tv_nopat1 * (1 + terminal_growth)
+    tv_rein1 = tv_nopat1 * terminal_rr
+    tv_rein2 = tv_nopat2 * terminal_rr
+    tv_fcf1 = result["terminal_fcf"]
+    tv_fcf2 = tv_nopat2 * (1 - terminal_rr)
+    n = result["total_years"]
+    tv_pv1 = tv_fcf1 / (1 + wacc) ** (n + 1)
+    tv_pv2 = tv_fcf2 / (1 + wacc) ** (n + 2)
+    diluted_m = result["diluted_shares"] / 1e6
+    terminal_rows = pd.DataFrame([
+        {
+            "Year": "T+1 ✦",
+            "NOPAT ($B)": f"{tv_nopat1 / 1e9:.2f}",
+            "Growth Rate": f"{terminal_growth * 100:.1f}%",
+            "Reinvestment Rate": f"{terminal_rr * 100:.1f}%",
+            "Reinvestment ($B)": f"{tv_rein1 / 1e9:.2f}",
+            "FCF ($B)": f"{tv_fcf1 / 1e9:.2f}",
+            "Equity Raised ($B)": "0.00",
+            "Debt Raised ($B)": "0.00",
+            "New Shares Issued (M)": "0.00",
+            "Diluted Shares (M)": f"{diluted_m:.3f}",
+            "PV of FCF ($B)": f"{tv_pv1 / 1e9:.2f}",
+        },
+        {
+            "Year": "T+2 ✦",
+            "NOPAT ($B)": f"{tv_nopat2 / 1e9:.2f}",
+            "Growth Rate": f"{terminal_growth * 100:.1f}%",
+            "Reinvestment Rate": f"{terminal_rr * 100:.1f}%",
+            "Reinvestment ($B)": f"{tv_rein2 / 1e9:.2f}",
+            "FCF ($B)": f"{tv_fcf2 / 1e9:.2f}",
+            "Equity Raised ($B)": "0.00",
+            "Debt Raised ($B)": "0.00",
+            "New Shares Issued (M)": "0.00",
+            "Diluted Shares (M)": f"{diluted_m:.3f}",
+            "PV of FCF ($B)": f"{tv_pv2 / 1e9:.2f}",
+        },
+    ])
+    df = pd.concat([year0, df, terminal_rows], ignore_index=True)
     df = df[[
         "Year", "NOPAT ($B)", "Growth Rate", "Reinvestment Rate",
         "Reinvestment ($B)", "FCF ($B)",
         "Equity Raised ($B)", "Debt Raised ($B)",
         "New Shares Issued (M)", "Diluted Shares (M)", "PV of FCF ($B)",
     ]]
+    st.caption("✦ Terminal rows are illustrative (individual-year FCFs, not the Gordon Growth TV sum).")
     st.dataframe(df, hide_index=True, use_container_width=True)
 
     # ── Summary table ──────────────────────────────────────────────────────────

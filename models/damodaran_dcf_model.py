@@ -140,7 +140,9 @@ def _damodaran_dcf(
         "pv_fcfs": pv_fcfs,
         "pv_terminal": pv_terminal,
         "terminal_reinvestment_rate": terminal_reinvestment_rate,
+        "terminal_nopat": terminal_nopat,
         "terminal_fcf": terminal_fcf,
+        "total_years": years,
         "diluted_shares": current_shares,
         "total_new_shares": total_new_shares,
         "issuance_price": issuance_price,
@@ -197,7 +199,7 @@ def _dcf_three_phase(
             Defaults to wacc (Damodaran's recommended default).
 
     Returns:
-        Same keys as _damodaran_dcf:
+        Same keys as _damodaran_dcf:years_mature
             intrinsic_price, enterprise_value, equity_value,
             pv_fcfs, pv_terminal, terminal_reinvestment_rate, terminal_fcf,
             diluted_shares, total_new_shares, issuance_price,
@@ -239,7 +241,7 @@ def _dcf_three_phase(
             roic_t = roic_invest + (roic_peak - roic_invest) * alpha_r
             phase = "Investment"
         elif t <= years_invest + years_scale:
-            # Scale phase: locked at peak
+            # Scale phase: ROIC locked at peak
             roic_t = roic_peak
             phase = "Scale"
         else:
@@ -306,7 +308,9 @@ def _dcf_three_phase(
         "pv_fcfs": pv_fcfs,
         "pv_terminal": pv_terminal,
         "terminal_reinvestment_rate": terminal_reinvestment_rate,
+        "terminal_nopat": terminal_nopat,
         "terminal_fcf": terminal_fcf,
+        "total_years": total_years,
         "diluted_shares": current_shares,
         "total_new_shares": total_new_shares,
         "issuance_price": issuance_price,
