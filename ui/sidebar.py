@@ -1,6 +1,6 @@
 import streamlit as st
 
-from dcf.fetcher import fetch_stock_data
+from datasource.fetcher import fetch_stock_data
 from ui.utils import fmt_b, fmt_x
 
 

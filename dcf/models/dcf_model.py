@@ -23,7 +23,7 @@ def _dcf_linear_growth(
         fcf: Base Free Cash Flow (most recent annual, in dollars)
         g_start: Near-term growth rate at year 1 (e.g. 0.10)
         g_terminal: Perpetual terminal growth rate (e.g. 0.025)
-        wacc: Discount rate / WACC (e.g. 0.10)
+        wacc: Weighted Average Cost of Capital. Discount rate / WACC (e.g. 0.10) 
         net_debt: Total Debt - Cash (in dollars)
         shares_outstanding: Number of shares
         years: Forecast horizon
@@ -44,6 +44,7 @@ def _dcf_linear_growth(
         # Linear interpolation: year 1 → g_start, year N → g_terminal
         alpha = (t - 1) / (years - 1) if years > 1 else 1.0
         g_t = g_start + (g_terminal - g_start) * alpha
+        # assmues FCF growths for free. Non additional reinvestment required. Not true for capex heavy businesses.
         current_fcf *= (1 + g_t)
         discount_factor = (1 + wacc) ** t
         pv = current_fcf / discount_factor

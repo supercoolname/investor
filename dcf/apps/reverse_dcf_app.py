@@ -9,7 +9,7 @@ Uses scipy.optimize.brentq for bracketed root-finding (stable & fast).
 
 from scipy.optimize import brentq
 
-from dcf.dcf_model import _dcf_linear_growth
+from dcf.models.dcf_model import _dcf_linear_growth
 
 
 def solve_implied_g(

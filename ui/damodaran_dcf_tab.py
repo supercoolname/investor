@@ -1,40 +1,54 @@
 import pandas as pd
 import streamlit as st
 
-from dcf.apps.dcf_app import run_dcf, run_dcf_simulation
+from dcf.apps.damodaran_dcf_app import run_damodaran_dcf
 from ui.utils import fmt_b
 
 
-def render_dcf_tab():
+def render_damodaran_dcf_tab():
     if "stock_data" not in st.session_state:
         st.info("Load a stock from the sidebar first.")
         return
 
     data = st.session_state.stock_data
 
-    # ── Inputs ────────────────────────────────────────────────────────────────
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        near_growth = st.slider("g — Near-term Growth Rate (%)", 0, 30, 10, key="dcf_g") / 100
-    with c2:
-        terminal_growth = st.slider("g∞ — Terminal Growth Rate (%)", 1.0, 4.0, 2.5, key="dcf_ginf") / 100
-    with c3:
-        wacc = st.slider("r — WACC / Discount Rate (%)", 6.0, 15.0, 10.0, key="dcf_r") / 100
-    with c4:
-        years = st.slider("n — Forecast Years", 3, 10, 5, key="dcf_n")
+    # Use operating_cash_flow as NOPAT proxy (after-tax operating earnings before capex).
+    # FCF already has reinvestment deducted — we need the pre-reinvestment figure.
+    nopat = data.get("operating_cash_flow") or data["fcf"]
+    nopat_source = "Operating Cash Flow" if data.get("operating_cash_flow") else "FCF (fallback)"
 
-    if not st.button("Calculate Intrinsic Value", type="primary", key="dcf_calc"):
+    # ── Inputs ────────────────────────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        near_growth = st.slider("g — Near-term Growth (%)", 0, 30, 10, key="ddcf_g") / 100
+    with c2:
+        terminal_growth = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="ddcf_ginf") / 100
+    with c3:
+        wacc = st.slider("r — WACC (%)", 6.0, 15.0, 10.0, key="ddcf_r") / 100
+    with c4:
+        years = st.slider("n — Forecast Years", 3, 10, 5, key="ddcf_n")
+    with c5:
+        roic = st.slider("ROIC — Return on Invested Capital (%)", 5, 60, 20, key="ddcf_roic") / 100
+
+    st.caption(
+        f"NOPAT proxy: **{nopat_source}** = {fmt_b(nopat)}  ·  "
+        f"Terminal ROIC defaults to WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity."
+    )
+
+    if not st.button("Calculate Intrinsic Value", type="primary", key="ddcf_calc"):
         return
 
     try:
-        result = run_dcf(
-            fcf=data["fcf"],
-            near_growth=near_growth,
+        result = run_damodaran_dcf(
+            nopat=nopat,
+            roic=roic,
+            g_start=near_growth,
+            g_terminal=terminal_growth,
             wacc=wacc,
-            terminal_growth=terminal_growth,
             net_debt=data["net_debt"],
             shares_outstanding=data["shares_outstanding"],
             years=years,
+            roic_terminal=None,  # defaults to wacc inside the model
         )
     except ValueError as e:
         st.error(str(e))
@@ -53,7 +67,13 @@ def render_dcf_tab():
         fcol, acol = st.columns([3, 2])
 
         with fcol:
-            st.markdown("**DCF Formula**")
+            st.markdown("**Damodaran ROIC-Based DCF Formula**")
+            st.latex(r"""
+                \text{Reinvestment Rate}_t = \frac{g_t}{\text{ROIC}}
+            """)
+            st.latex(r"""
+                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}}\right)
+            """)
             st.latex(r"""
                 P = \sum_{t=1}^{n} \frac{FCF_t}{(1+r)^t}
                     + \frac{TV}{(1+r)^n}
@@ -63,26 +83,27 @@ def render_dcf_tab():
             st.markdown(r"""
 | Symbol | Description |
 |---|---|
-| $FCF_0$ | Base Free Cash Flow (most recent annual) |
-| $FCF_t$ | $FCF_0 \times (1 + g_t)$ — projected FCF in year $t$, $g_t$ declines linearly |
-| $g$ | Near-term Growth Rate (year 1) |
-| $TV$ | Terminal Value $= \dfrac{FCF_n \times (1 + g_\infty)}{r - g_\infty}$ |
-| $g_\infty$ | Terminal Growth Rate (perpetual) |
+| $NOPAT_0$ | Net Operating Profit After Tax (base year) |
+| $NOPAT_t$ | $NOPAT_0 \times \prod_{s=1}^{t}(1 + g_s)$ |
+| $g_t$ | Growth rate at year $t$, declines linearly from $g$ to $g_\infty$ |
+| $\text{ROIC}$ | Return on Invested Capital — efficiency of growth |
+| $TV$ | Terminal Value $= \dfrac{FCF_n \times (1 + g_\infty)}{r - g_\infty}$, with $\text{ROIC}_\infty = r$ |
 | $r$ | WACC — Discount Rate |
-| $n$ | Forecast Years |
 | Net Debt | Total Debt − Cash & Equivalents |
 """)
 
         with acol:
             st.markdown("**Assumptions Used in This Calculation**")
             for label, value in [
-                ("FCF₀ — Base Free Cash Flow",    fmt_b(data['fcf'])),
-                ("g — Near-term Growth Rate",      f"{near_growth * 100:.1f}%"),
-                ("g∞ — Terminal Growth Rate",      f"{terminal_growth * 100:.1f}%"),
-                ("r — WACC (Discount Rate)",       f"{wacc * 100:.1f}%"),
-                ("n — Forecast Years",             f"{years} years"),
-                ("Net Debt",                       fmt_b(data['net_debt'])),
-                ("Shares Outstanding",             f"{data['shares_outstanding'] / 1e9:.2f}B"),
+                (f"NOPAT₀ — Base ({nopat_source})", fmt_b(nopat)),
+                ("ROIC — Return on Invested Capital", f"{roic * 100:.1f}%"),
+                ("Terminal ROIC",                     f"{wacc * 100:.1f}% (= WACC)"),
+                ("g — Near-term Growth Rate",          f"{near_growth * 100:.1f}%"),
+                ("g∞ — Terminal Growth Rate",          f"{terminal_growth * 100:.1f}%"),
+                ("r — WACC (Discount Rate)",           f"{wacc * 100:.1f}%"),
+                ("n — Forecast Years",                 f"{years} years"),
+                ("Net Debt",                           fmt_b(data['net_debt'])),
+                ("Shares Outstanding",                 f"{data['shares_outstanding'] / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
 
@@ -111,24 +132,33 @@ def render_dcf_tab():
         st.bar_chart(chart_data)
 
     with col_table:
-        st.subheader("Year-by-Year FCF Breakdown")
+        st.subheader("Year-by-Year Breakdown")
         df = pd.DataFrame(result["rows"])
-        df["Projected FCF ($B)"] = df["Projected FCF ($B)"].map("{:.2f}".format)
+        for col in ["NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)", "PV of FCF ($B)"]:
+            df[col] = df[col].map("{:.2f}".format)
         df["Discount Factor (1+r)^t"] = df["Discount Factor"].map("{:.3f}".format)
-        df["PV of FCF ($B)"] = df["PV of FCF ($B)"].map("{:.2f}".format)
         df = df.drop(columns=["Discount Factor"])
-        df = df[["Year", "Growth Rate", "Projected FCF ($B)", "Discount Factor (1+r)^t", "PV of FCF ($B)"]]
+        df = df[[
+            "Year", "Growth Rate", "Reinvestment Rate",
+            "NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)",
+            "Discount Factor (1+r)^t", "PV of FCF ($B)",
+        ]]
         st.dataframe(df, hide_index=True, use_container_width=True)
 
     # ── Summary table ──────────────────────────────────────────────────────────
     st.divider()
     st.subheader("DCF Summary")
+    terminal_rr = result["terminal_reinvestment_rate"]
     summary_df = pd.DataFrame([
-        ("FCF₀ — Base Free Cash Flow",         fmt_b(data['fcf'])),
+        (f"NOPAT₀ — Base ({nopat_source})",    fmt_b(nopat)),
+        ("ROIC — Near-term",                    f"{roic * 100:.1f}%"),
+        ("ROIC — Terminal (= WACC)",            f"{wacc * 100:.1f}%"),
         ("g — Near-term Growth Rate",           f"{near_growth * 100:.1f}%"),
         ("g∞ — Terminal Growth Rate",           f"{terminal_growth * 100:.1f}%"),
         ("r — WACC (Discount Rate)",            f"{wacc * 100:.1f}%"),
         ("n — Forecast Years",                  str(years)),
+        ("Terminal Reinvestment Rate",          f"{terminal_rr * 100:.1f}%"),
+        ("Terminal FCF",                        fmt_b(result["terminal_fcf"])),
         ("PV of FCFs",                          fmt_b(result['pv_fcfs'])),
         ("PV of Terminal Value (TV)",           fmt_b(result['pv_terminal'])),
         ("Enterprise Value (EV)",               fmt_b(result['enterprise_value'])),
@@ -139,40 +169,3 @@ def render_dcf_tab():
         ("Current Price per Share",             f"${market:.2f}"),
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, hide_index=True, use_container_width=True)
-
-    # ── Simulation table ───────────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Valuation Sensitivity (Linear Growth Simulation)")
-    st.caption(
-        f"Intrinsic value per share across near-term growth start rates "
-        f"({near_growth * 100 - 5:.0f}% – {near_growth * 100 + 8:.0f}%) "
-        f"and terminal growth rates (2% – 8%), declining linearly over 7 years. "
-        f"r = {wacc * 100:.1f}% held fixed. "
-        f"Green = above market price (${market:,.2f}), red = below."
-    )
-
-    sim = run_dcf_simulation(
-        fcf=data["fcf"],
-        near_growth=near_growth,
-        wacc=wacc,
-        net_debt=data["net_debt"],
-        shares_outstanding=data["shares_outstanding"],
-    )
-
-    sim_df = pd.DataFrame(
-        [[f"${p:,.0f}" if p is not None else "N/A" for p in row] for row in sim["prices"]],
-        index=[f"{r * 100:.0f}%" for r in sim["terminal_growth_rates"]],
-        columns=[f"{r * 100:.0f}%" for r in sim["near_growth_rates"]],
-    )
-    sim_df.index.name = "g∞ \\ g start →"
-
-    def _color(val):
-        if val == "N/A":
-            return "color: gray"
-        try:
-            price = float(val.replace("$", "").replace(",", ""))
-        except ValueError:
-            return ""
-        return "background-color: #d4edda; color: #155724" if price >= market else "background-color: #f8d7da; color: #721c24"
-
-    st.dataframe(sim_df.style.applymap(_color), use_container_width=True)

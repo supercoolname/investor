@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from dcf.reverse_dcf_app import solve_implied_g
+from dcf.apps.reverse_dcf_app import solve_implied_g
 from ui.utils import fmt_b
 
 
