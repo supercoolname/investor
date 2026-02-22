@@ -1,5 +1,8 @@
 """
 Damodaran DCF application layer: public APIs for ROIC-based DCF models.
+
+Formatting boundary: model functions (_phase_*) return raw numeric dicts.
+This layer converts raw rows to display format before returning to callers.
 """
 
 from models.damodaran_dcf_model import (
@@ -9,12 +12,41 @@ from models.damodaran_dcf_model import (
 )
 
 
+def _format_rows(raw_rows: list[dict]) -> list[dict]:
+    """
+    Convert raw numeric model rows to display-ready rows.
+
+    Rates (g, roic, reinvestment_rate) → "15.0%" strings.
+    Dollar amounts → float $B.
+    Share counts → float M.
+    """
+    return [
+        {
+            "Year":                   row["year"],
+            "Phase":                  row["phase"],
+            "Growth Rate":            f"{row['g'] * 100:.1f}%",
+            "ROIC":                   f"{row['roic'] * 100:.1f}%",
+            "Reinvestment Rate":      f"{row['reinvestment_rate'] * 100:.1f}%",
+            "NOPAT ($B)":             row["nopat"] / 1e9,
+            "Reinvestment ($B)":      row["reinvestment"] / 1e9,
+            "FCF ($B)":               row["fcf"] / 1e9,
+            "Equity Raised ($B)":     row["equity_raised"] / 1e9,
+            "Debt Raised ($B)":       row["debt_raised"] / 1e9,
+            "New Shares Issued (M)":  row["new_shares"] / 1e6,
+            "Diluted Shares (M)":     row["shares"] / 1e6,
+            "Discount Factor":        row["discount_factor"],
+            "PV of FCF ($B)":         row["pv"] / 1e9,
+        }
+        for row in raw_rows
+    ]
+
+
 # ── Per-phase public APIs ──────────────────────────────────────────────────────
 #
 # Each function accepts the state carried in from the prior phase
-# (current_nopat, current_shares) and the global growth-interpolation context
+# (nopat, current_shares) and the global growth-interpolation context
 # (g_start, g_terminal, total_years), then returns the updated state together
-# with the phase's FCF PV contribution and year-by-year rows.
+# with the phase's FCF PV contribution and display-ready rows.
 #
 # Return schema (all three): {"nopat", "shares", "pv_fcfs", "rows"}
 
@@ -48,8 +80,9 @@ def run_phase_investment(
 
     Returns:
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
+        where rows are display-ready (rates as "x.x%", amounts as $B, shares as M).
     """
-    nopat_out, shares_out, pv_fcfs, rows = _phase_investment(
+    phase = _phase_investment(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,
@@ -62,7 +95,12 @@ def run_phase_investment(
         wacc=wacc,
         issuance_price=issuance_price,
     )
-    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+    return {
+        "nopat":   phase["nopat"],
+        "shares":  phase["shares"],
+        "pv_fcfs": phase["pv_fcfs"],
+        "rows":    _format_rows(phase["rows"]),
+    }
 
 
 def run_phase_scale(
@@ -93,7 +131,7 @@ def run_phase_scale(
     Returns:
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
     """
-    nopat_out, shares_out, pv_fcfs, rows = _phase_scale(
+    phase = _phase_scale(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,
@@ -105,7 +143,12 @@ def run_phase_scale(
         wacc=wacc,
         issuance_price=issuance_price,
     )
-    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+    return {
+        "nopat":   phase["nopat"],
+        "shares":  phase["shares"],
+        "pv_fcfs": phase["pv_fcfs"],
+        "rows":    _format_rows(phase["rows"]),
+    }
 
 
 def run_phase_mature(
@@ -142,7 +185,7 @@ def run_phase_mature(
     Returns:
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
     """
-    nopat_out, shares_out, pv_fcfs, rows = _phase_mature(
+    phase = _phase_mature(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,
@@ -155,7 +198,12 @@ def run_phase_mature(
         wacc=wacc,
         issuance_price=issuance_price,
     )
-    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+    return {
+        "nopat":   phase["nopat"],
+        "shares":  phase["shares"],
+        "pv_fcfs": phase["pv_fcfs"],
+        "rows":    _format_rows(phase["rows"]),
+    }
 
 
 # ── Orchestrator ───────────────────────────────────────────────────────────────
@@ -252,12 +300,6 @@ def run_dcf_three_phase(
         "total_new_shares": final_shares - shares_outstanding,
         "issuance_price": issuance_price,
         "rows": rows,
-        # Per-phase detail for UI display
-        "phases": {
-            "investment": phase1,
-            "scale":      phase2,
-            "mature":     phase3,
-        },
     }
 
 
