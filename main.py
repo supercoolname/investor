@@ -210,6 +210,7 @@ with tab_dcf:
                 df["Discount Factor (1+r)^t"] = df["Discount Factor"].map("{:.3f}".format)
                 df["PV of FCF ($B)"] = df["PV of FCF ($B)"].map("{:.2f}".format)
                 df = df.drop(columns=["Discount Factor"])
+                df = df[["Year", "Growth Rate", "Projected FCF ($B)", "Discount Factor (1+r)^t", "PV of FCF ($B)"]]
                 st.dataframe(df, hide_index=True, use_container_width=True)
 
             # ── Summary table ──────────────────────────────────────────────────

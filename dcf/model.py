@@ -27,6 +27,63 @@ Key Inputs Needed for DCF Model:
 """
 
 
+# ── Core linear-growth engine ─────────────────────────────────────────────────
+
+def _dcf_linear_growth(
+    fcf: float,
+    g_start: float,
+    g_terminal: float,
+    wacc: float,
+    net_debt: float,
+    shares_outstanding: float,
+    years: int,
+) -> dict:
+    """
+    DCF where near-term growth declines linearly from g_start (year 1) to
+    g_terminal (year `years`), then continues at g_terminal in perpetuity.
+
+    Returns the same result dict as run_dcf.
+    """
+    if wacc <= g_terminal:
+        raise ValueError("WACC must be greater than terminal growth rate.")
+
+    rows = []
+    pv_fcfs = 0.0
+    current_fcf = fcf
+
+    for t in range(1, years + 1):
+        # Linear interpolation: year 1 → g_start, year N → g_terminal
+        alpha = (t - 1) / (years - 1) if years > 1 else 1.0
+        g_t = g_start + (g_terminal - g_start) * alpha
+        current_fcf *= (1 + g_t)
+        discount_factor = (1 + wacc) ** t
+        pv = current_fcf / discount_factor
+        pv_fcfs += pv
+        rows.append({
+            "Year": t,
+            "Growth Rate": f"{g_t * 100:.1f}%",
+            "Projected FCF ($B)": current_fcf / 1e9,
+            "Discount Factor": discount_factor,
+            "PV of FCF ($B)": pv / 1e9,
+        })
+
+    terminal_value = current_fcf * (1 + g_terminal) / (wacc - g_terminal)
+    pv_terminal = terminal_value / (1 + wacc) ** years
+
+    enterprise_value = pv_fcfs + pv_terminal
+    equity_value = enterprise_value - net_debt
+    intrinsic_price = equity_value / shares_outstanding
+
+    return {
+        "intrinsic_price": intrinsic_price,
+        "enterprise_value": enterprise_value,
+        "equity_value": equity_value,
+        "pv_fcfs": pv_fcfs,
+        "pv_terminal": pv_terminal,
+        "rows": rows,
+    }
+
+
 def run_dcf(
     fcf: float,
     near_growth: float,
@@ -53,41 +110,15 @@ def run_dcf(
             intrinsic_price, enterprise_value, equity_value,
             pv_fcfs, pv_terminal, rows (year-by-year breakdown)
     """
-    if wacc <= terminal_growth:
-        raise ValueError("WACC must be greater than terminal growth rate.")
-
-    rows = []
-    pv_fcfs = 0.0
-
-    for t in range(1, years + 1):
-        projected_fcf = fcf * (1 + near_growth) ** t
-        discount_factor = (1 + wacc) ** t
-        pv = projected_fcf / discount_factor
-        pv_fcfs += pv
-        rows.append({
-            "Year": t,
-            "Projected FCF ($B)": projected_fcf / 1e9,
-            "Discount Factor": discount_factor,
-            "PV of FCF ($B)": pv / 1e9,
-        })
-
-    # Terminal Value
-    fcf_final = fcf * (1 + near_growth) ** years
-    terminal_value = fcf_final * (1 + terminal_growth) / (wacc - terminal_growth)
-    pv_terminal = terminal_value / (1 + wacc) ** years
-
-    enterprise_value = pv_fcfs + pv_terminal
-    equity_value = enterprise_value - net_debt
-    intrinsic_price = equity_value / shares_outstanding
-
-    return {
-        "intrinsic_price": intrinsic_price,
-        "enterprise_value": enterprise_value,
-        "equity_value": equity_value,
-        "pv_fcfs": pv_fcfs,
-        "pv_terminal": pv_terminal,
-        "rows": rows,
-    }
+    return _dcf_linear_growth(
+        fcf=fcf,
+        g_start=near_growth,
+        g_terminal=terminal_growth,
+        wacc=wacc,
+        net_debt=net_debt,
+        shares_outstanding=shares_outstanding,
+        years=years,
+    )
 
 
 # ── Simulation ────────────────────────────────────────────────────────────────
@@ -95,36 +126,6 @@ def run_dcf(
 _SIM_YEARS = 7
 _SIM_NEAR_GROWTH_OFFSETS = [x / 100 for x in range(-5, 9)]   # -5% to +8% in 1% steps
 _SIM_TERMINAL_GROWTH_RATES = [x / 100 for x in range(2, 9)]  # 2% to 8% in 1% steps
-
-
-def _dcf_linear_growth(
-    fcf: float,
-    g_start: float,
-    g_terminal: float,
-    wacc: float,
-    net_debt: float,
-    shares_outstanding: float,
-    years: int,
-) -> float:
-    """
-    DCF where near-term growth declines linearly from g_start (year 1) to
-    g_terminal (year `years`), then continues at g_terminal in perpetuity.
-    """
-    pv_fcfs = 0.0
-    current_fcf = fcf
-
-    for t in range(1, years + 1):
-        # Linear interpolation: year 1 → g_start, year N → g_terminal
-        alpha = (t - 1) / (years - 1) if years > 1 else 1.0
-        g_t = g_start + (g_terminal - g_start) * alpha
-        current_fcf *= (1 + g_t)
-        pv_fcfs += current_fcf / (1 + wacc) ** t
-
-    terminal_value = current_fcf * (1 + g_terminal) / (wacc - g_terminal)
-    pv_terminal = terminal_value / (1 + wacc) ** years
-
-    equity_value = (pv_fcfs + pv_terminal) - net_debt
-    return equity_value / shares_outstanding
 
 
 def run_dcf_simulation(
@@ -167,7 +168,7 @@ def run_dcf_simulation(
                 row.append(None)
                 continue
             try:
-                price = _dcf_linear_growth(
+                result = _dcf_linear_growth(
                     fcf=fcf,
                     g_start=g_start,
                     g_terminal=g_terminal,
@@ -176,7 +177,7 @@ def run_dcf_simulation(
                     shares_outstanding=shares_outstanding,
                     years=_SIM_YEARS,
                 )
-                row.append(price)
+                row.append(result["intrinsic_price"])
             except (ValueError, ZeroDivisionError):
                 row.append(None)
         prices.append(row)
