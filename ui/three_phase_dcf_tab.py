@@ -94,58 +94,6 @@ def render_three_phase_dcf_tab():
     if data.get("sector") or data.get("industry"):
         st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
 
-    # ── Formula & Assumptions ──────────────────────────────────────────────────
-    with st.expander("📐 Formula & Assumptions Used", expanded=True):
-        fcol, acol = st.columns([3, 2])
-
-        with fcol:
-            st.markdown("**Three-Phase ROIC DCF**")
-            st.latex(r"""
-                \text{ROIC}_t = \begin{cases}
-                    \text{ROIC}_\text{invest} \to \text{ROIC}_\text{peak} & \text{(Investment)} \\
-                    \text{ROIC}_\text{peak} & \text{(Scale)} \\
-                    \text{ROIC}_\text{peak} \to r & \text{(Mature)}
-                \end{cases}
-            """)
-            st.latex(r"""
-                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}_t}\right)
-            """)
-            st.latex(r"""
-                P = \sum_{t=1}^{N} \frac{FCF_t}{(1+r)^t}
-                    + \frac{TV}{(1+r)^N}
-                    - \text{Net Debt}
-            """)
-            st.markdown("Where:")
-            st.markdown(r"""
-| Symbol | Description |
-|---|---|
-| $\text{ROIC}_t$ | Piecewise-linear ROIC: invest → peak → WACC |
-| $g_t$ | Growth, declines linearly from $g$ to $g_\infty$ across all phases |
-| $TV$ | $\dfrac{FCF_N \times (1+g_\infty)}{r - g_\infty}$, with $\text{ROIC}_N = r$ |
-| $r$ | WACC — Discount Rate |
-| Net Debt | Total Debt − Cash & Equivalents |
-""")
-
-        with acol:
-            st.markdown("**Assumptions Used**")
-            for label, value in [
-                (f"NOPAT₀ ({nopat_source})",        fmt_b(nopat)),
-                ("ROIC — Investment phase",          f"{roic_invest * 100:.1f}%"),
-                ("ROIC — Scale peak",                f"{roic_peak * 100:.1f}%"),
-                ("ROIC — Terminal (= WACC)",         f"{wacc * 100:.1f}%"),
-                ("g — Initial Growth Rate",          f"{g_start * 100:.1f}%"),
-                ("g∞ — Terminal Growth Rate",        f"{g_terminal * 100:.1f}%"),
-                ("r — WACC",                         f"{wacc * 100:.1f}%"),
-                ("Years — Investment",               str(years_invest)),
-                ("Years — Scale",                    str(years_scale)),
-                ("Years — Mature",                   str(years_mature)),
-                ("Net Debt",                         fmt_b(data["net_debt"])),
-                ("Shares Outstanding",               f"{data['shares_outstanding'] / 1e9:.2f}B"),
-            ]:
-                st.markdown(f"- {label}: **{value}**")
-
-    st.divider()
-
     # ── Key metrics ────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
     col1.metric("Intrinsic Value", f"${intrinsic:,.2f}")
@@ -156,14 +104,6 @@ def render_three_phase_dcf_tab():
         col3.metric("Margin of Safety", f"{margin:.1f}%", delta="Overvalued", delta_color="inverse")
 
     st.divider()
-
-    # ── Chart ──────────────────────────────────────────────────────────────────
-    st.subheader("Value Breakdown")
-    chart_data = pd.DataFrame({
-        "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
-        "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
-    }).set_index("Component")
-    st.bar_chart(chart_data)
 
     # ── Year-by-year table ─────────────────────────────────────────────────────
     st.subheader("Year-by-Year Breakdown")
@@ -273,3 +213,63 @@ def render_three_phase_dcf_tab():
         ("Current Price per Share",             f"${market:.2f}"),
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # ── Chart ──────────────────────────────────────────────────────────────────
+    st.subheader("Value Breakdown")
+    chart_data = pd.DataFrame({
+        "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
+        "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
+    }).set_index("Component")
+    st.bar_chart(chart_data)
+
+    # ── Formula & Assumptions ──────────────────────────────────────────────────
+    with st.expander("📐 Formula & Assumptions Used"):
+        fcol, acol = st.columns([3, 2])
+
+        with fcol:
+            st.markdown("**Three-Phase ROIC DCF**")
+            st.latex(r"""
+                \text{ROIC}_t = \begin{cases}
+                    \text{ROIC}_\text{invest} \to \text{ROIC}_\text{peak} & \text{(Investment)} \\
+                    \text{ROIC}_\text{peak} & \text{(Scale)} \\
+                    \text{ROIC}_\text{peak} \to r & \text{(Mature)}
+                \end{cases}
+            """)
+            st.latex(r"""
+                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}_t}\right)
+            """)
+            st.latex(r"""
+                P = \sum_{t=1}^{N} \frac{FCF_t}{(1+r)^t}
+                    + \frac{TV}{(1+r)^N}
+                    - \text{Net Debt}
+            """)
+            st.markdown("Where:")
+            st.markdown(r"""
+| Symbol | Description |
+|---|---|
+| $\text{ROIC}_t$ | Piecewise-linear ROIC: invest → peak → WACC |
+| $g_t$ | Growth, declines linearly from $g$ to $g_\infty$ across all phases |
+| $TV$ | $\dfrac{FCF_N \times (1+g_\infty)}{r - g_\infty}$, with $\text{ROIC}_N = r$ |
+| $r$ | WACC — Discount Rate |
+| Net Debt | Total Debt − Cash & Equivalents |
+""")
+
+        with acol:
+            st.markdown("**Assumptions Used**")
+            for label, value in [
+                (f"NOPAT₀ ({nopat_source})",        fmt_b(nopat)),
+                ("ROIC — Investment phase",          f"{roic_invest * 100:.1f}%"),
+                ("ROIC — Scale peak",                f"{roic_peak * 100:.1f}%"),
+                ("ROIC — Terminal (= WACC)",         f"{wacc * 100:.1f}%"),
+                ("g — Initial Growth Rate",          f"{g_start * 100:.1f}%"),
+                ("g∞ — Terminal Growth Rate",        f"{g_terminal * 100:.1f}%"),
+                ("r — WACC",                         f"{wacc * 100:.1f}%"),
+                ("Years — Investment",               str(years_invest)),
+                ("Years — Scale",                    str(years_scale)),
+                ("Years — Mature",                   str(years_mature)),
+                ("Net Debt",                         fmt_b(data["net_debt"])),
+                ("Shares Outstanding",               f"{data['shares_outstanding'] / 1e9:.2f}B"),
+            ]:
+                st.markdown(f"- {label}: **{value}**")

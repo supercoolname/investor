@@ -65,53 +65,6 @@ def render_damodaran_dcf_tab():
     if data.get("sector") or data.get("industry"):
         st.caption(f"{data.get('sector', '')}  ·  {data.get('industry', '')}")
 
-    # ── Formula & Assumptions ──────────────────────────────────────────────────
-    with st.expander("📐 Formula & Assumptions Used", expanded=True):
-        fcol, acol = st.columns([3, 2])
-
-        with fcol:
-            st.markdown("**Damodaran ROIC-Based DCF Formula**")
-            st.latex(r"""
-                \text{Reinvestment Rate}_t = \frac{g_t}{\text{ROIC}}
-            """)
-            st.latex(r"""
-                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}}\right)
-            """)
-            st.latex(r"""
-                P = \sum_{t=1}^{n} \frac{FCF_t}{(1+r)^t}
-                    + \frac{TV}{(1+r)^n}
-                    - \text{Net Debt}
-            """)
-            st.markdown("Where:")
-            st.markdown(r"""
-| Symbol | Description |
-|---|---|
-| $NOPAT_0$ | Net Operating Profit After Tax (base year) |
-| $NOPAT_t$ | $NOPAT_0 \times \prod_{s=1}^{t}(1 + g_s)$ |
-| $g_t$ | Growth rate at year $t$, declines linearly from $g$ to $g_\infty$ |
-| $\text{ROIC}$ | Return on Invested Capital — efficiency of growth |
-| $TV$ | Terminal Value $= \dfrac{FCF_n \times (1 + g_\infty)}{r - g_\infty}$, with $\text{ROIC}_\infty = r$ |
-| $r$ | WACC — Discount Rate |
-| Net Debt | Total Debt − Cash & Equivalents |
-""")
-
-        with acol:
-            st.markdown("**Assumptions Used in This Calculation**")
-            for label, value in [
-                (f"NOPAT₀ — Base ({nopat_source})", fmt_b(nopat)),
-                ("ROIC — Return on Invested Capital", f"{roic * 100:.1f}%"),
-                ("Terminal ROIC",                     f"{wacc * 100:.1f}% (= WACC)"),
-                ("g — Near-term Growth Rate",          f"{near_growth * 100:.1f}%"),
-                ("g∞ — Terminal Growth Rate",          f"{terminal_growth * 100:.1f}%"),
-                ("r — WACC (Discount Rate)",           f"{wacc * 100:.1f}%"),
-                ("n — Forecast Years",                 f"{years} years"),
-                ("Net Debt",                           fmt_b(data['net_debt'])),
-                ("Shares Outstanding",                 f"{data['shares_outstanding'] / 1e9:.2f}B"),
-            ]:
-                st.markdown(f"- {label}: **{value}**")
-
-    st.divider()
-
     # ── Key metrics ────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
     col1.metric("Intrinsic Value", f"${intrinsic:,.2f}")
@@ -122,14 +75,6 @@ def render_damodaran_dcf_tab():
         col3.metric("Margin of Safety", f"{margin:.1f}%", delta="Overvalued", delta_color="inverse")
 
     st.divider()
-
-    # ── Chart ──────────────────────────────────────────────────────────────────
-    st.subheader("Value Breakdown")
-    chart_data = pd.DataFrame({
-        "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
-        "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
-    }).set_index("Component")
-    st.bar_chart(chart_data)
 
     # ── Year-by-year table ─────────────────────────────────────────────────────
     st.subheader("Year-by-Year Breakdown")
@@ -230,3 +175,58 @@ def render_damodaran_dcf_tab():
         ("Current Price per Share",             f"${market:.2f}"),
     ], columns=["Item", "Value"])
     st.dataframe(summary_df, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # ── Chart ──────────────────────────────────────────────────────────────────
+    st.subheader("Value Breakdown")
+    chart_data = pd.DataFrame({
+        "Component": ["PV of FCFs", "PV of Terminal Value (TV)"],
+        "Value ($B)": [result["pv_fcfs"] / 1e9, result["pv_terminal"] / 1e9],
+    }).set_index("Component")
+    st.bar_chart(chart_data)
+
+    # ── Formula & Assumptions ──────────────────────────────────────────────────
+    with st.expander("📐 Formula & Assumptions Used"):
+        fcol, acol = st.columns([3, 2])
+
+        with fcol:
+            st.markdown("**Damodaran ROIC-Based DCF Formula**")
+            st.latex(r"""
+                \text{Reinvestment Rate}_t = \frac{g_t}{\text{ROIC}}
+            """)
+            st.latex(r"""
+                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}}\right)
+            """)
+            st.latex(r"""
+                P = \sum_{t=1}^{n} \frac{FCF_t}{(1+r)^t}
+                    + \frac{TV}{(1+r)^n}
+                    - \text{Net Debt}
+            """)
+            st.markdown("Where:")
+            st.markdown(r"""
+| Symbol | Description |
+|---|---|
+| $NOPAT_0$ | Net Operating Profit After Tax (base year) |
+| $NOPAT_t$ | $NOPAT_0 \times \prod_{s=1}^{t}(1 + g_s)$ |
+| $g_t$ | Growth rate at year $t$, declines linearly from $g$ to $g_\infty$ |
+| $\text{ROIC}$ | Return on Invested Capital — efficiency of growth |
+| $TV$ | Terminal Value $= \dfrac{FCF_n \times (1 + g_\infty)}{r - g_\infty}$, with $\text{ROIC}_\infty = r$ |
+| $r$ | WACC — Discount Rate |
+| Net Debt | Total Debt − Cash & Equivalents |
+""")
+
+        with acol:
+            st.markdown("**Assumptions Used in This Calculation**")
+            for label, value in [
+                (f"NOPAT₀ — Base ({nopat_source})", fmt_b(nopat)),
+                ("ROIC — Return on Invested Capital", f"{roic * 100:.1f}%"),
+                ("Terminal ROIC",                     f"{wacc * 100:.1f}% (= WACC)"),
+                ("g — Near-term Growth Rate",          f"{near_growth * 100:.1f}%"),
+                ("g∞ — Terminal Growth Rate",          f"{terminal_growth * 100:.1f}%"),
+                ("r — WACC (Discount Rate)",           f"{wacc * 100:.1f}%"),
+                ("n — Forecast Years",                 f"{years} years"),
+                ("Net Debt",                           fmt_b(data['net_debt'])),
+                ("Shares Outstanding",                 f"{data['shares_outstanding'] / 1e9:.2f}B"),
+            ]:
+                st.markdown(f"- {label}: **{value}**")
