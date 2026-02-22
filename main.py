@@ -22,7 +22,7 @@ import streamlit as st
 
 from dcf.fetcher import fetch_stock_data
 from dcf.model import run_dcf
-from dcf.reverse_model import run_reverse_dcf
+from dcf.reverse_model import solve_implied_g
 
 st.set_page_config(page_title="DCF Valuation", page_icon="📈", layout="wide")
 
@@ -237,33 +237,27 @@ with tab_dcf:
 # Tab 2: Reverse DCF
 # ═══════════════════════════════════════════════════════════════════════════════
 with tab_reverse:
-    st.caption(
-        "Given the current market price, what growth rate and discount rate is the market implying?"
-    )
+    st.caption("Given the current market price, what near-term growth rate is the market pricing in?")
 
     if "stock_data" not in st.session_state:
         st.info("Load a stock from the sidebar first.")
     else:
         rdata = st.session_state.stock_data
 
-        # ── Inline controls ────────────────────────────────────────────────────
-        rc1, rc2, rc3, rc4 = st.columns(4)
+        # ── Inputs ────────────────────────────────────────────────────────────
+        rc1, rc2, rc3 = st.columns(3)
         with rc1:
+            rdcf_years = st.slider("n — Near-term Forecast Years", 3, 10, 5, key="rdcf_years")
+        with rc2:
             rdcf_terminal_growth = st.slider(
                 "g∞ — Terminal Growth Rate (%)", 1.0, 4.0, 2.5, key="rdcf_g_inf"
             ) / 100
-        with rc2:
-            rdcf_wacc = st.slider(
-                "r — WACC / Discount Rate (%)", 6.0, 15.0, 10.0, key="rdcf_wacc"
-            ) / 100
         with rc3:
-            rdcf_near_growth = st.slider(
-                "g — Near-term Growth Assumption (%)", 0, 30, 10, key="rdcf_g"
+            rdcf_wacc = st.slider(
+                "r — Discount Rate / WACC (%)", 6.0, 15.0, 10.0, key="rdcf_wacc"
             ) / 100
-        with rc4:
-            rdcf_years = st.slider("n — Forecast Years", 3, 10, 5, key="rdcf_years")
 
-        if st.button("Calculate Implied Rates", type="primary", key="rdcf_calc"):
+        if st.button("Solve for Implied Growth Rate", type="primary", key="rdcf_calc"):
             if rdata["fcf"] <= 0:
                 st.warning(
                     f"FCF₀ is negative (${rdata['fcf'] / 1e9:.2f}B). "
@@ -271,10 +265,9 @@ with tab_reverse:
                 )
 
             try:
-                rresult = run_reverse_dcf(
+                implied_g = solve_implied_g(
                     fcf=rdata["fcf"],
                     wacc=rdcf_wacc,
-                    near_growth=rdcf_near_growth,
                     terminal_growth=rdcf_terminal_growth,
                     net_debt=rdata["net_debt"],
                     shares_outstanding=rdata["shares_outstanding"],
@@ -285,51 +278,37 @@ with tab_reverse:
                 st.error(f"Reverse DCF calculation failed: {e}")
                 st.stop()
 
-            implied_g = rresult["implied_g"]
-            implied_r = rresult["implied_r"]
             market = rdata["current_price"]
 
             st.subheader(f"{rdata['company_name']} ({st.session_state.stock_ticker})")
             if rdata.get("sector") or rdata.get("industry"):
                 st.caption(f"{rdata.get('sector', '')}  ·  {rdata.get('industry', '')}")
 
-            # ── Key metrics ────────────────────────────────────────────────────
-            m1, m2, m3 = st.columns(3)
+            # ── Result metric ──────────────────────────────────────────────────
+            m1, m2 = st.columns(2)
             m1.metric(
-                "Implied g — Near-term Growth Rate",
+                "Implied Near-term Growth Rate (g)",
                 f"{implied_g * 100:.2f}%" if implied_g is not None else "N/A",
-                help="Growth rate that makes DCF intrinsic value = current market price (r held fixed)"
+                help="Near-term FCF growth rate that makes the DCF intrinsic value equal the current market price",
             )
-            m2.metric(
-                "Implied r — WACC / Discount Rate",
-                f"{implied_r * 100:.2f}%" if implied_r is not None else "N/A",
-                help="Discount rate that makes DCF intrinsic value = current market price (g held fixed)"
-            )
-            m3.metric("Current Market Price", f"${market:,.2f}")
+            m2.metric("Current Market Price", f"${market:,.2f}")
 
             if implied_g is None:
                 st.warning(
-                    "Could not solve for Implied g. The current price may be outside the range "
-                    "achievable by any growth rate in [-50%, 100%] at the given WACC."
+                    "Could not solve for implied g. The current price may be outside the range "
+                    "achievable by any growth rate in [-50%, 100%] at the given inputs."
                 )
-            if implied_r is None:
-                st.warning(
-                    "Could not solve for Implied r. The current price may be outside the range "
-                    "achievable by any discount rate in [g∞+0.1%, 50%] at the given growth rate."
-                )
-
-            if implied_g is not None:
+            else:
                 st.info(
-                    f"The market expects **{rdata['company_name']}** FCF₀ to grow at "
+                    f"To justify **${market:,.2f}**, the market is pricing in FCF₀ growing at "
                     f"**{implied_g * 100:.1f}%/yr** for {rdcf_years} years "
-                    f"(assuming r = {rdcf_wacc * 100:.1f}% and g∞ = {rdcf_terminal_growth * 100:.1f}%) "
-                    f"to justify a price of **${market:,.2f}**."
+                    f"(r = {rdcf_wacc * 100:.1f}%, g∞ = {rdcf_terminal_growth * 100:.1f}%)."
                 )
 
             st.divider()
 
             # ── Formula & Assumptions expander ────────────────────────────────
-            with st.expander("📐 Reverse DCF Formula & Assumptions", expanded=False):
+            with st.expander("📐 Formula & Assumptions", expanded=False):
                 fcol, acol = st.columns([3, 2])
 
                 with fcol:
@@ -337,71 +316,53 @@ with tab_reverse:
                     st.latex(r"""
                         P_{\text{market}} = \sum_{t=1}^{n} \frac{FCF_0 \cdot (1+g)^t}{(1+r)^t}
                             + \frac{TV(g)}{(1+r)^n}
-                            - \text{Net Debt}^*
+                            - \frac{\text{Net Debt}}{\text{Shares}}
                     """)
-                    st.caption("*Net Debt divided by Shares Outstanding")
                     st.markdown(
-                        "Given the current market price $P_{\\text{market}}$, we numerically solve for "
-                        "$g$ (near-term growth) such that the DCF formula produces the market price. "
-                        "Uses `scipy.optimize.brentq` — bracketed root-finding over $g \\in [-50\\%, 100\\%]$."
+                        "Numerically solves for $g$ such that the DCF formula equals the market price. "
+                        "Uses `scipy.optimize.brentq` over $g \\in [-50\\%, 100\\%]$."
                     )
 
                 with acol:
-                    st.markdown("**Assumptions Used**")
-                    assumptions_r = [
-                        ("FCF₀ — Base Free Cash Flow",     fmt_b(rdata['fcf'])),
-                        ("g∞ — Terminal Growth Rate",       f"{rdcf_terminal_growth * 100:.1f}%"),
-                        ("r — WACC (held fixed for Implied g)", f"{rdcf_wacc * 100:.1f}%"),
-                        ("g — Near-term (held fixed for Implied r)", f"{rdcf_near_growth * 100:.1f}%"),
-                        ("n — Forecast Years",              f"{rdcf_years} years"),
-                        ("Net Debt",                        fmt_b(rdata['net_debt'])),
-                        ("Shares Outstanding",              f"{rdata['shares_outstanding'] / 1e9:.2f}B"),
-                        ("Current Market Price",            f"${market:,.2f}"),
-                    ]
-                    for label, value in assumptions_r:
+                    st.markdown("**Inputs**")
+                    for label, value in [
+                        ("FCF₀",              fmt_b(rdata['fcf'])),
+                        ("r — Discount Rate", f"{rdcf_wacc * 100:.1f}%"),
+                        ("g∞ — Terminal Growth", f"{rdcf_terminal_growth * 100:.1f}%"),
+                        ("n — Forecast Years", f"{rdcf_years}"),
+                        ("Net Debt",          fmt_b(rdata['net_debt'])),
+                        ("Shares Outstanding", f"{rdata['shares_outstanding'] / 1e9:.2f}B"),
+                        ("Market Price",       f"${market:,.2f}"),
+                    ]:
                         st.markdown(f"- {label}: **{value}**")
 
             # ── Sensitivity table ──────────────────────────────────────────────
-            st.subheader("Sensitivity: Implied g across WACC values")
-            st.caption("Implied near-term growth rate (g) for r ± 2% in 0.5% steps (g∞ and n held fixed)")
+            st.subheader("Sensitivity: Implied g across discount rates")
+            st.caption("How implied g changes as r varies ±2% in 0.5% steps (g∞ and n held fixed)")
 
             r_deltas = [-0.020, -0.015, -0.010, -0.005, 0.000, 0.005, 0.010, 0.015, 0.020]
             sens_rows = []
             for delta in r_deltas:
                 r_test = rdcf_wacc + delta
                 if r_test <= rdcf_terminal_growth:
-                    sens_rows.append({
-                        "r (WACC)": f"{r_test * 100:.1f}%",
-                        "Implied g": "N/A (r ≤ g∞)",
-                    })
+                    sens_rows.append({"r (WACC)": f"{r_test * 100:.1f}%", "Implied g": "N/A (r ≤ g∞)"})
                     continue
                 try:
-                    sens = run_reverse_dcf(
+                    g_val = solve_implied_g(
                         fcf=rdata["fcf"],
                         wacc=r_test,
-                        near_growth=rdcf_near_growth,
                         terminal_growth=rdcf_terminal_growth,
                         net_debt=rdata["net_debt"],
                         shares_outstanding=rdata["shares_outstanding"],
                         years=rdcf_years,
                         current_price=market,
                     )
-                    g_val = sens["implied_g"]
                     label = f"{g_val * 100:.2f}%" if g_val is not None else "N/A"
                     if delta == 0.0:
-                        label = f"**{label}** ← selected r"
+                        label += "  ← selected r"
                 except Exception:
                     label = "error"
 
-                sens_rows.append({
-                    "r (WACC)": f"{r_test * 100:.1f}%",
-                    "Implied g": label,
-                })
+                sens_rows.append({"r (WACC)": f"{r_test * 100:.1f}%", "Implied g": label})
 
-            sens_df = pd.DataFrame(sens_rows)
-            st.dataframe(sens_df, hide_index=True, use_container_width=True)
-
-        else:
-            st.caption(
-                "r is held fixed to solve for Implied g · g is held fixed to solve for Implied r"
-            )
+            st.dataframe(pd.DataFrame(sens_rows), hide_index=True, use_container_width=True)
