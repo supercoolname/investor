@@ -9,7 +9,7 @@ Uses scipy.optimize.brentq for bracketed root-finding (stable & fast).
 
 from scipy.optimize import brentq
 
-from dcf.model import run_dcf
+from dcf.dcf_model import _dcf_linear_growth
 
 
 def solve_implied_g(
@@ -41,11 +41,11 @@ def solve_implied_g(
 
     def price_error(g: float) -> float:
         try:
-            result = run_dcf(
+            result = _dcf_linear_growth(
                 fcf=fcf,
-                near_growth=g,
+                g_start=g,
+                g_terminal=terminal_growth,
                 wacc=wacc,
-                terminal_growth=terminal_growth,
                 net_debt=net_debt,
                 shares_outstanding=shares_outstanding,
                 years=years,

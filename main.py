@@ -21,8 +21,8 @@ import pandas as pd
 import streamlit as st
 
 from dcf.fetcher import fetch_stock_data
-from dcf.model import run_dcf, run_dcf_simulation
-from dcf.reverse_model import solve_implied_g
+from dcf.dcf_app import run_dcf, run_dcf_simulation
+from dcf.reverse_dcf_app import solve_implied_g
 
 st.set_page_config(page_title="DCF Valuation", page_icon="📈", layout="wide")
 
