@@ -20,18 +20,12 @@ st.caption("Discounted Cash Flow model powered by Yahoo Finance data")
 
 render_sidebar()
 
-tab_dcf, tab_damodaran, tab_three_phase, tab_reverse = st.tabs([
-    "📈 Simple DCF", "🏗️ Damodaran DCF", "🔬 Three-Phase DCF", "🔄 Reverse DCF"
+tab_simple_dcf, tab_three_phase = st.tabs([
+    "📈 Simple DCF",  "🔬 Three-Phase DCF",
 ])
-
-with tab_dcf:
-    render_simple_dcf_tab()
-
-with tab_damodaran:
-    render_damodaran_dcf_tab()
 
 with tab_three_phase:
     render_three_phase_dcf_tab()
 
-with tab_reverse:
-    render_reverse_dcf_tab()
+with tab_simple_dcf:
+    render_simple_dcf_tab()
