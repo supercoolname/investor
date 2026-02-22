@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 
-from apps.reverse_dcf_app import solve_implied_g
-from ui.utils import fmt_b
+import apps.reverse_dcf_app as reverse_dcf_app
+import ui.utils as utils
 
 
 def render_reverse_dcf_tab():
@@ -37,7 +37,7 @@ def render_reverse_dcf_tab():
         )
 
     try:
-        implied_g = solve_implied_g(
+        implied_g = reverse_dcf_app.solve_implied_g(
             fcf=rdata["fcf"],
             wacc=rdcf_wacc,
             terminal_growth=rdcf_terminal_growth,
@@ -99,11 +99,11 @@ def render_reverse_dcf_tab():
         with acol:
             st.markdown("**Inputs**")
             for label, value in [
-                ("FCF₀",                 fmt_b(rdata['fcf'])),
+                ("FCF₀",                 utils.fmt_b(rdata['fcf'])),
                 ("r — Discount Rate",    f"{rdcf_wacc * 100:.1f}%"),
                 ("g∞ — Terminal Growth", f"{rdcf_terminal_growth * 100:.1f}%"),
                 ("n — Forecast Years",   str(rdcf_years)),
-                ("Net Debt",             fmt_b(rdata['net_debt'])),
+                ("Net Debt",             utils.fmt_b(rdata['net_debt'])),
                 ("Shares Outstanding",   f"{rdata['shares_outstanding'] / 1e9:.2f}B"),
                 ("Market Price",         f"${market:,.2f}"),
             ]:
@@ -121,7 +121,7 @@ def render_reverse_dcf_tab():
             sens_rows.append({"r (WACC)": f"{r_test * 100:.1f}%", "Implied g": "N/A (r ≤ g∞)"})
             continue
         try:
-            g_val = solve_implied_g(
+            g_val = reverse_dcf_app.solve_implied_g(
                 fcf=rdata["fcf"],
                 wacc=r_test,
                 terminal_growth=rdcf_terminal_growth,

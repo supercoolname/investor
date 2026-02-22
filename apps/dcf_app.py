@@ -2,7 +2,7 @@
 DCF application layer: public API for running DCF valuations and simulations.
 """
 
-from models.dcf_model import _dcf_linear_growth
+import models.dcf_model as dcf_model
 
 _SIM_YEARS = 7
 _SIM_NEAR_GROWTH_OFFSETS = [x / 100 for x in range(-5, 9)]   # -5% to +8% in 1% steps
@@ -38,7 +38,7 @@ def run_dcf(
             intrinsic_price, enterprise_value, equity_value,
             pv_fcfs, pv_terminal, rows (year-by-year breakdown)
     """
-    return _dcf_linear_growth(
+    return dcf_model._dcf_linear_growth(
         fcf=fcf,
         g_start=near_growth,
         g_terminal=terminal_growth,
@@ -89,7 +89,7 @@ def run_dcf_simulation(
                 row.append(None)
                 continue
             try:
-                result = _dcf_linear_growth(
+                result = dcf_model._dcf_linear_growth(
                     fcf=fcf,
                     g_start=g_start,
                     g_terminal=g_terminal,

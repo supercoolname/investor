@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 
-from apps.dcf_app import run_dcf, run_dcf_simulation
-from ui.utils import fmt_b
+import apps.dcf_app as dcf_app
+import ui.utils as utils
 
 
 def render_simple_dcf_tab():
@@ -27,7 +27,7 @@ def render_simple_dcf_tab():
         return
 
     try:
-        result = run_dcf(
+        result = dcf_app.run_dcf(
             fcf=data["fcf"],
             near_growth=near_growth,
             wacc=wacc,
@@ -76,12 +76,12 @@ def render_simple_dcf_tab():
         with acol:
             st.markdown("**Assumptions Used in This Calculation**")
             for label, value in [
-                ("FCF₀ — Base Free Cash Flow",    fmt_b(data['fcf'])),
+                ("FCF₀ — Base Free Cash Flow",    utils.fmt_b(data['fcf'])),
                 ("g — Near-term Growth Rate",      f"{near_growth * 100:.1f}%"),
                 ("g∞ — Terminal Growth Rate",      f"{terminal_growth * 100:.1f}%"),
                 ("r — WACC (Discount Rate)",       f"{wacc * 100:.1f}%"),
                 ("n — Forecast Years",             f"{years} years"),
-                ("Net Debt",                       fmt_b(data['net_debt'])),
+                ("Net Debt",                       utils.fmt_b(data['net_debt'])),
                 ("Shares Outstanding",             f"{data['shares_outstanding'] / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
@@ -124,16 +124,16 @@ def render_simple_dcf_tab():
     st.divider()
     st.subheader("DCF Summary")
     summary_df = pd.DataFrame([
-        ("FCF₀ — Base Free Cash Flow",         fmt_b(data['fcf'])),
+        ("FCF₀ — Base Free Cash Flow",         utils.fmt_b(data['fcf'])),
         ("g — Near-term Growth Rate",           f"{near_growth * 100:.1f}%"),
         ("g∞ — Terminal Growth Rate",           f"{terminal_growth * 100:.1f}%"),
         ("r — WACC (Discount Rate)",            f"{wacc * 100:.1f}%"),
         ("n — Forecast Years",                  str(years)),
-        ("PV of FCFs",                          fmt_b(result['pv_fcfs'])),
-        ("PV of Terminal Value (TV)",           fmt_b(result['pv_terminal'])),
-        ("Enterprise Value (EV)",               fmt_b(result['enterprise_value'])),
-        ("Net Debt",                            fmt_b(data['net_debt'])),
-        ("Equity Value (EV − Net Debt)",        fmt_b(result['equity_value'])),
+        ("PV of FCFs",                          utils.fmt_b(result['pv_fcfs'])),
+        ("PV of Terminal Value (TV)",           utils.fmt_b(result['pv_terminal'])),
+        ("Enterprise Value (EV)",               utils.fmt_b(result['enterprise_value'])),
+        ("Net Debt",                            utils.fmt_b(data['net_debt'])),
+        ("Equity Value (EV − Net Debt)",        utils.fmt_b(result['equity_value'])),
         ("Shares Outstanding",                  f"{data['shares_outstanding'] / 1e9:.2f}B"),
         ("Intrinsic Value per Share",           f"${intrinsic:.2f}"),
         ("Current Price per Share",             f"${market:.2f}"),
@@ -151,7 +151,7 @@ def render_simple_dcf_tab():
         f"Green = above market price (${market:,.2f}), red = below."
     )
 
-    sim = run_dcf_simulation(
+    sim = dcf_app.run_dcf_simulation(
         fcf=data["fcf"],
         near_growth=near_growth,
         wacc=wacc,

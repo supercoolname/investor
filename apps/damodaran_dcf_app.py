@@ -5,16 +5,12 @@ Formatting boundary: model functions (_phase_*) return raw numeric dicts.
 This layer converts raw rows to display format before returning to callers.
 """
 
-from models.damodaran_dcf_model import (
-    _phase_investment,
-    _phase_scale,
-    _phase_mature,
-)
+import models.damodaran_dcf_model as damodaran_dcf_model
 
 
-def _format_rows(raw_rows: list[dict]) -> list[dict]:
+def _format_rows(rows: list[damodaran_dcf_model.DFCDataYearly]) -> list[dict]:
     """
-    Convert raw numeric model rows to display-ready rows.
+    Convert DFCDataYearly objects to display-ready dicts.
 
     Rates (g, roic, reinvestment_rate) → "15.0%" strings.
     Dollar amounts → float $B.
@@ -22,22 +18,22 @@ def _format_rows(raw_rows: list[dict]) -> list[dict]:
     """
     return [
         {
-            "Year":                   row["year"],
-            "Phase":                  row["phase"],
-            "Growth Rate":            f"{row['g'] * 100:.1f}%",
-            "ROIC":                   f"{row['roic'] * 100:.1f}%",
-            "Reinvestment Rate":      f"{row['reinvestment_rate'] * 100:.1f}%",
-            "NOPAT ($B)":             row["nopat"] / 1e9,
-            "Reinvestment ($B)":      row["reinvestment"] / 1e9,
-            "FCF ($B)":               row["fcf"] / 1e9,
-            "Equity Raised ($B)":     row["equity_raised"] / 1e9,
-            "Debt Raised ($B)":       row["debt_raised"] / 1e9,
-            "New Shares Issued (M)":  row["new_shares"] / 1e6,
-            "Diluted Shares (M)":     row["shares"] / 1e6,
-            "Discount Factor":        row["discount_factor"],
-            "PV of FCF ($B)":         row["pv"] / 1e9,
+            "Year":                   row.year,
+            "Phase":                  row.phase,
+            "Growth Rate":            f"{row.g * 100:.1f}%",
+            "ROIC":                   f"{row.roic * 100:.1f}%",
+            "Reinvestment Rate":      f"{row.reinvestment_rate * 100:.1f}%",
+            "NOPAT ($B)":             row.nopat / 1e9,
+            "Reinvestment ($B)":      row.reinvestment / 1e9,
+            "FCF ($B)":               row.fcf / 1e9,
+            "Equity Raised ($B)":     row.equity_raised / 1e9,
+            "Debt Raised ($B)":       row.debt_raised / 1e9,
+            "New Shares Issued (M)":  row.new_shares / 1e6,
+            "Diluted Shares (M)":     row.shares / 1e6,
+            "Discount Factor":        row.discount_factor,
+            "PV of FCF ($B)":         row.pv / 1e9,
         }
-        for row in raw_rows
+        for row in rows
     ]
 
 
@@ -82,7 +78,7 @@ def run_phase_investment(
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
         where rows are display-ready (rates as "x.x%", amounts as $B, shares as M).
     """
-    phase = _phase_investment(
+    phase = damodaran_dcf_model._phase_investment(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,
@@ -131,7 +127,7 @@ def run_phase_scale(
     Returns:
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
     """
-    phase = _phase_scale(
+    phase = damodaran_dcf_model._phase_scale(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,
@@ -185,7 +181,7 @@ def run_phase_mature(
     Returns:
         {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
     """
-    phase = _phase_mature(
+    phase = damodaran_dcf_model._phase_mature(
         current_nopat=nopat,
         current_shares=current_shares,
         t_offset=t_offset,

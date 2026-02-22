@@ -1,11 +1,8 @@
 import pandas as pd
 import streamlit as st
 
-from apps.damodaran_dcf_app import (
-    run_dcf_three_phase,
-    compute_three_phase_sensitivity,
-)
-from ui.utils import fmt_b
+import apps.damodaran_dcf_app as damodaran_dcf_app
+import ui.utils as utils
 
 
 def render_three_phase_dcf_tab():
@@ -61,7 +58,7 @@ def render_three_phase_dcf_tab():
 
     issuance_price = data["current_price"]
     st.caption(
-        f"NOPAT proxy: **{nopat_source}** = {fmt_b(nopat)}  ·  "
+        f"NOPAT proxy: **{nopat_source}** = {utils.fmt_b(nopat)}  ·  "
         f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
         f"⚠️ New shares assumed issued at current market price **${issuance_price:,.2f}**."
     )
@@ -70,7 +67,7 @@ def render_three_phase_dcf_tab():
         return
 
     try:
-        result = run_dcf_three_phase(
+        result = damodaran_dcf_app.run_dcf_three_phase(
             nopat=nopat,
             roic_invest=roic_invest,
             roic_peak=roic_peak,
@@ -192,7 +189,7 @@ def render_three_phase_dcf_tab():
     st.subheader("DCF Summary")
     terminal_rr = result["terminal_reinvestment_rate"]
     summary_df = pd.DataFrame([
-        (f"NOPAT₀ — Base ({nopat_source})",    fmt_b(nopat)),
+        (f"NOPAT₀ — Base ({nopat_source})",    utils.fmt_b(nopat)),
         ("ROIC — Investment phase",             f"{roic_invest * 100:.1f}%"),
         ("ROIC — Scale peak",                   f"{roic_peak * 100:.1f}%"),
         ("ROIC — Terminal (= WACC)",            f"{wacc * 100:.1f}%"),
@@ -202,12 +199,12 @@ def render_three_phase_dcf_tab():
         ("Years — Investment / Scale / Mature", f"{years_invest} / {years_scale} / {years_mature}"),
         ("Total Forecast Years",                str(total_years)),
         ("Terminal Reinvestment Rate",          f"{terminal_rr * 100:.1f}%"),
-        ("Terminal FCF",                        fmt_b(result["terminal_fcf"])),
-        ("PV of FCFs",                          fmt_b(result["pv_fcfs"])),
-        ("PV of Terminal Value (TV)",           fmt_b(result["pv_terminal"])),
-        ("Enterprise Value (EV)",               fmt_b(result["enterprise_value"])),
-        ("Net Debt",                            fmt_b(data["net_debt"])),
-        ("Equity Value (EV − Net Debt)",        fmt_b(result["equity_value"])),
+        ("Terminal FCF",                        utils.fmt_b(result["terminal_fcf"])),
+        ("PV of FCFs",                          utils.fmt_b(result["pv_fcfs"])),
+        ("PV of Terminal Value (TV)",           utils.fmt_b(result["pv_terminal"])),
+        ("Enterprise Value (EV)",               utils.fmt_b(result["enterprise_value"])),
+        ("Net Debt",                            utils.fmt_b(data["net_debt"])),
+        ("Equity Value (EV − Net Debt)",        utils.fmt_b(result["equity_value"])),
         ("Shares Outstanding (base)",           f"{data['shares_outstanding'] / 1e6:.2f}M"),
         ("New Shares Issued (dilution)",        f"{result['total_new_shares'] / 1e6:.2f}M"),
         ("Diluted Shares (terminal)",           f"{result['diluted_shares'] / 1e6:.2f}M"),
@@ -221,7 +218,7 @@ def render_three_phase_dcf_tab():
 
     # ── Sensitivity Analysis ───────────────────────────────────────────────────
     st.subheader("📊 Sensitivity Analysis")
-    sens = compute_three_phase_sensitivity(
+    sens = damodaran_dcf_app.compute_three_phase_sensitivity(
         nopat=nopat,
         roic_invest=roic_invest,
         roic_peak=roic_peak,
@@ -310,7 +307,7 @@ def render_three_phase_dcf_tab():
         with acol:
             st.markdown("**Assumptions Used**")
             for label, value in [
-                (f"NOPAT₀ ({nopat_source})",        fmt_b(nopat)),
+                (f"NOPAT₀ ({nopat_source})",        utils.fmt_b(nopat)),
                 ("ROIC — Investment phase",          f"{roic_invest * 100:.1f}%"),
                 ("ROIC — Scale peak",                f"{roic_peak * 100:.1f}%"),
                 ("ROIC — Terminal (= WACC)",         f"{wacc * 100:.1f}%"),
@@ -320,7 +317,7 @@ def render_three_phase_dcf_tab():
                 ("Years — Investment",               str(years_invest)),
                 ("Years — Scale",                    str(years_scale)),
                 ("Years — Mature",                   str(years_mature)),
-                ("Net Debt",                         fmt_b(data["net_debt"])),
+                ("Net Debt",                         utils.fmt_b(data["net_debt"])),
                 ("Shares Outstanding",               f"{data['shares_outstanding'] / 1e9:.2f}B"),
             ]:
                 st.markdown(f"- {label}: **{value}**")
