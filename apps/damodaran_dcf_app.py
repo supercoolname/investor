@@ -25,7 +25,7 @@ def _format_rows(rows: list[damodaran_dcf_model.DFCDataYearly]) -> list[dict]:
             "Reinvestment Rate":      f"{row.reinvestment_rate * 100:.1f}%",
             "NOPAT ($B)":             row.nopat / 1e9,
             "Reinvestment ($B)":      row.reinvestment / 1e9,
-            "FCF ($B)":               row.fcf / 1e9,
+            "Derived FCF ($B)":        row.derived_fcf / 1e9,  # NOPAT − Reinvestment
             "Equity Raised ($B)":     row.equity_raised / 1e9,
             "Debt Raised ($B)":       row.debt_raised / 1e9,
             "New Shares Issued (M)":  row.new_shares / 1e6,

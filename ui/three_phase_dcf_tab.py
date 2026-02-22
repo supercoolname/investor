@@ -175,7 +175,7 @@ def render_three_phase_dcf_tab():
     # ── Year-by-year table ─────────────────────────────────────────────────────
     st.subheader("Year-by-Year Breakdown")
     df = pd.DataFrame(result["rows"])
-    for col in ["NOPAT ($B)", "Reinvestment ($B)", "FCF ($B)",
+    for col in ["NOPAT ($B)", "Reinvestment ($B)", "Derived FCF ($B)",
                 "Equity Raised ($B)", "Debt Raised ($B)", "PV of FCF ($B)"]:
         df[col] = df[col].map("{:.2f}".format)
     df["New Shares Issued (M)"] = df["New Shares Issued (M)"].map("{:.2f}".format)
@@ -190,7 +190,7 @@ def render_three_phase_dcf_tab():
         "Reinvestment Rate": "—",
         "NOPAT ($B)": f"{nopat / 1e9:.2f}",
         "Reinvestment ($B)": "—",
-        "FCF ($B)": "—",
+        "Derived FCF ($B)": "—",
         "Equity Raised ($B)": "—",
         "Debt Raised ($B)": "—",
         "New Shares Issued (M)": "—",
@@ -217,7 +217,7 @@ def render_three_phase_dcf_tab():
             "ROIC": f"{wacc * 100:.1f}%",
             "Reinvestment Rate": f"{terminal_rr * 100:.1f}%",
             "Reinvestment ($B)": f"{tv_rein1 / 1e9:.2f}",
-            "FCF ($B)": f"{tv_fcf1 / 1e9:.2f}",
+            "Derived FCF ($B)": f"{tv_fcf1 / 1e9:.2f}",
             "Equity Raised ($B)": "0.00",
             "Debt Raised ($B)": "0.00",
             "New Shares Issued (M)": "0.00",
@@ -232,7 +232,7 @@ def render_three_phase_dcf_tab():
             "ROIC": f"{wacc * 100:.1f}%",
             "Reinvestment Rate": f"{terminal_rr * 100:.1f}%",
             "Reinvestment ($B)": f"{tv_rein2 / 1e9:.2f}",
-            "FCF ($B)": f"{tv_fcf2 / 1e9:.2f}",
+            "Derived FCF ($B)": f"{tv_fcf2 / 1e9:.2f}",
             "Equity Raised ($B)": "0.00",
             "Debt Raised ($B)": "0.00",
             "New Shares Issued (M)": "0.00",
@@ -243,11 +243,11 @@ def render_three_phase_dcf_tab():
     df = pd.concat([year0, df, terminal_rows], ignore_index=True)
     df = df[[
         "Year", "Phase", "NOPAT ($B)", "Growth Rate", "ROIC", "Reinvestment Rate",
-        "Reinvestment ($B)", "FCF ($B)",
+        "Reinvestment ($B)", "Derived FCF ($B)",
         "Equity Raised ($B)", "Debt Raised ($B)",
         "New Shares Issued (M)", "Diluted Shares (M)", "PV of FCF ($B)",
     ]]
-    st.caption("✦ Terminal rows are illustrative (individual-year FCFs, not the Gordon Growth TV sum).")
+    st.caption("✦ Terminal rows are illustrative (individual-year values, not the Gordon Growth TV sum).  Derived FCF = NOPAT − Reinvestment (model output; not input FCF₀).")
     st.dataframe(df, hide_index=True, use_container_width=True)
 
     # ── Summary table ──────────────────────────────────────────────────────────
@@ -349,10 +349,10 @@ def render_three_phase_dcf_tab():
                 \end{cases}
             """)
             st.latex(r"""
-                FCF_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}_t}\right)
+                \text{Derived FCF}_t = NOPAT_t \times \left(1 - \frac{g_t}{\text{ROIC}_t}\right)
             """)
             st.latex(r"""
-                P = \sum_{t=1}^{N} \frac{FCF_t}{(1+r)^t}
+                P = \sum_{t=1}^{N} \frac{\text{Derived FCF}_t}{(1+r)^t}
                     + \frac{TV}{(1+r)^N}
                     - \text{Net Debt}
             """)
@@ -362,7 +362,8 @@ def render_three_phase_dcf_tab():
 |---|---|
 | $\text{ROIC}_t$ | Piecewise-linear ROIC: invest → peak → WACC |
 | $g_t$ | Growth, declines linearly from $g$ to $g_\infty$ across all phases |
-| $TV$ | $\dfrac{FCF_N \times (1+g_\infty)}{r - g_\infty}$, with $\text{ROIC}_N = r$ |
+| $\text{Derived FCF}_t$ | NOPAT$_t$ − Reinvestment$_t$ (model-derived; ≠ input FCF₀) |
+| $TV$ | $\dfrac{\text{Derived FCF}_N \times (1+g_\infty)}{r - g_\infty}$, with $\text{ROIC}_N = r$ |
 | $r$ | WACC — Discount Rate |
 | Net Debt | Total Debt − Cash & Equivalents |
 """)

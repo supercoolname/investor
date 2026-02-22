@@ -17,23 +17,28 @@ Terminal value uses roic_terminal (defaults to wacc per Damodaran — no excess
 returns in perpetuity under competition).
 
 Three-phase model: invest (low ROIC) → scale (peak ROIC) → mature (ROIC decays to WACC)
-
-Row schema (all phases):
-    year              int    — global forecast year (1-indexed)
-    phase             str    — "Investment" | "Scale" | "Mature"
-    g                 float  — growth rate (e.g. 0.15)
-    roic              float  — ROIC this year (e.g. 0.30)
-    reinvestment_rate float  — g / roic
-    nopat             float  — NOPAT after growth ($)
-    reinvestment      float  — nopat × reinvestment_rate ($)
-    fcf               float  — nopat − reinvestment ($)
-    equity_raised     float  — max(-fcf, 0) ($)
-    debt_raised       float  — always 0.0 ($)
-    new_shares        float  — equity_raised / issuance_price (count)
-    shares            float  — cumulative diluted shares (count)
-    discount_factor   float  — (1 + wacc)^year
-    pv                float  — fcf / discount_factor ($)
 """
+
+from dataclasses import dataclass
+
+
+@dataclass
+class DFCDataYearly:
+    """Raw numeric output for one forecast year. All monetary values in dollars."""
+    year:              int    # global forecast year (1-indexed)
+    phase:             str    # "Investment" | "Scale" | "Mature"
+    g:                 float  # growth rate (e.g. 0.15)
+    roic:              float  # ROIC this year (e.g. 0.30)
+    reinvestment_rate: float  # g / roic
+    nopat:             float  # NOPAT after growth ($)
+    reinvestment:      float  # nopat × reinvestment_rate ($)
+    derived_fcf:       float  # NOPAT − reinvestment ($); model-derived, not input FCF₀
+    equity_raised:     float  # max(-fcf, 0) ($)
+    debt_raised:       float  # always 0.0 ($)
+    new_shares:        float  # equity_raised / issuance_price (count)
+    shares:            float  # cumulative diluted shares (count)
+    discount_factor:   float  # (1 + wacc)^year
+    pv:                float  # fcf / discount_factor ($)
 
 
 def _phase_investment(
@@ -54,13 +59,13 @@ def _phase_investment(
 
     Returns:
         {
-            "nopat":   float  — NOPAT at end of phase ($),
-            "shares":  float  — diluted share count at end of phase,
-            "pv_fcfs": float  — sum of discounted FCFs for this phase ($),
-            "rows":    list[dict]  — one raw numeric row per year (see module docstring),
+            "nopat":   float        — NOPAT at end of phase ($),
+            "shares":  float        — diluted share count at end of phase,
+            "pv_fcfs": float        — sum of discounted FCFs for this phase ($),
+            "rows":    list[DFCDataYearly],
         }
     """
-    rows = []
+    rows: list[DFCDataYearly] = []
     pv_fcfs = 0.0
 
     for local_t in range(1, years_invest + 1):
@@ -85,22 +90,14 @@ def _phase_investment(
         pv = fcf_t / discount_factor
         pv_fcfs += pv
 
-        rows.append({
-            "year": t,
-            "phase": "Investment",
-            "g": g_t,
-            "roic": roic_t,
-            "reinvestment_rate": reinvestment_rate,
-            "nopat": current_nopat,
-            "reinvestment": reinvestment,
-            "fcf": fcf_t,
-            "equity_raised": equity_raised,
-            "debt_raised": 0.0,
-            "new_shares": new_shares,
-            "shares": current_shares,
-            "discount_factor": discount_factor,
-            "pv": pv,
-        })
+        rows.append(DFCDataYearly(
+            year=t, phase="Investment",
+            g=g_t, roic=roic_t, reinvestment_rate=reinvestment_rate,
+            nopat=current_nopat, reinvestment=reinvestment, derived_fcf=fcf_t,
+            equity_raised=equity_raised, debt_raised=0.0,
+            new_shares=new_shares, shares=current_shares,
+            discount_factor=discount_factor, pv=pv,
+        ))
 
     return {"nopat": current_nopat, "shares": current_shares, "pv_fcfs": pv_fcfs, "rows": rows}
 
@@ -121,9 +118,9 @@ def _phase_scale(
     Scale phase: ROIC is constant at roic_peak (operating leverage at full force).
 
     Returns:
-        {"nopat", "shares", "pv_fcfs", "rows"}  — same schema as _phase_investment.
+        {"nopat", "shares", "pv_fcfs", "rows": list[DFCDataYearly]}
     """
-    rows = []
+    rows: list[DFCDataYearly] = []
     pv_fcfs = 0.0
 
     for local_t in range(1, years_scale + 1):
@@ -147,22 +144,14 @@ def _phase_scale(
         pv = fcf_t / discount_factor
         pv_fcfs += pv
 
-        rows.append({
-            "year": t,
-            "phase": "Scale",
-            "g": g_t,
-            "roic": roic_t,
-            "reinvestment_rate": reinvestment_rate,
-            "nopat": current_nopat,
-            "reinvestment": reinvestment,
-            "fcf": fcf_t,
-            "equity_raised": equity_raised,
-            "debt_raised": 0.0,
-            "new_shares": new_shares,
-            "shares": current_shares,
-            "discount_factor": discount_factor,
-            "pv": pv,
-        })
+        rows.append(DFCDataYearly(
+            year=t, phase="Scale",
+            g=g_t, roic=roic_t, reinvestment_rate=reinvestment_rate,
+            nopat=current_nopat, reinvestment=reinvestment, derived_fcf=fcf_t,
+            equity_raised=equity_raised, debt_raised=0.0,
+            new_shares=new_shares, shares=current_shares,
+            discount_factor=discount_factor, pv=pv,
+        ))
 
     return {"nopat": current_nopat, "shares": current_shares, "pv_fcfs": pv_fcfs, "rows": rows}
 
@@ -187,9 +176,9 @@ def _phase_mature(
     terminal reinvestment rate — no FCF discontinuity at the forecast boundary.
 
     Returns:
-        {"nopat", "shares", "pv_fcfs", "rows"}  — same schema as _phase_investment.
+        {"nopat", "shares", "pv_fcfs", "rows": list[DFCDataYearly]}
     """
-    rows = []
+    rows: list[DFCDataYearly] = []
     pv_fcfs = 0.0
 
     for local_t in range(1, years_mature + 1):
@@ -214,21 +203,13 @@ def _phase_mature(
         pv = fcf_t / discount_factor
         pv_fcfs += pv
 
-        rows.append({
-            "year": t,
-            "phase": "Mature",
-            "g": g_t,
-            "roic": roic_t,
-            "reinvestment_rate": reinvestment_rate,
-            "nopat": current_nopat,
-            "reinvestment": reinvestment,
-            "fcf": fcf_t,
-            "equity_raised": equity_raised,
-            "debt_raised": 0.0,
-            "new_shares": new_shares,
-            "shares": current_shares,
-            "discount_factor": discount_factor,
-            "pv": pv,
-        })
+        rows.append(DFCDataYearly(
+            year=t, phase="Mature",
+            g=g_t, roic=roic_t, reinvestment_rate=reinvestment_rate,
+            nopat=current_nopat, reinvestment=reinvestment, derived_fcf=fcf_t,
+            equity_raised=equity_raised, debt_raised=0.0,
+            new_shares=new_shares, shares=current_shares,
+            discount_factor=discount_factor, pv=pv,
+        ))
 
     return {"nopat": current_nopat, "shares": current_shares, "pv_fcfs": pv_fcfs, "rows": rows}
