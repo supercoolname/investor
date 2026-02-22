@@ -21,7 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from dcf.fetcher import fetch_stock_data
-from dcf.model import run_dcf
+from dcf.model import run_dcf, run_dcf_simulation
 from dcf.reverse_model import solve_implied_g
 
 st.set_page_config(page_title="DCF Valuation", page_icon="📈", layout="wide")
@@ -232,6 +232,54 @@ with tab_dcf:
             ]
             summary_df = pd.DataFrame(summary, columns=["Item", "Value"])
             st.dataframe(summary_df, hide_index=True, use_container_width=True)
+
+            # ── Simulation table ───────────────────────────────────────────────
+            st.divider()
+            st.subheader("Valuation Sensitivity (Linear Growth Simulation)")
+            st.caption(
+                f"Intrinsic value per share across near-term growth start rates "
+                f"({near_growth * 100 - 5:.0f}% – {near_growth * 100 + 8:.0f}%) "
+                f"and terminal growth rates (2% – 8%), declining linearly over 7 years. "
+                f"r = {wacc * 100:.1f}% held fixed. "
+                f"Green = above market price (${market:,.2f}), red = below."
+            )
+
+            sim = run_dcf_simulation(
+                fcf=data["fcf"],
+                near_growth=near_growth,
+                wacc=wacc,
+                net_debt=data["net_debt"],
+                shares_outstanding=data["shares_outstanding"],
+            )
+
+            col_labels = [f"{r * 100:.0f}%" for r in sim["near_growth_rates"]]
+            row_labels = [f"{r * 100:.0f}%" for r in sim["terminal_growth_rates"]]
+
+            sim_df = pd.DataFrame(
+                [
+                    [f"${p:,.0f}" if p is not None else "N/A" for p in row]
+                    for row in sim["prices"]
+                ],
+                index=row_labels,
+                columns=col_labels,
+            )
+            sim_df.index.name = "g∞ \\ g start →"
+
+            def _color(val):
+                if val == "N/A":
+                    return "color: gray"
+                try:
+                    price = float(val.replace("$", "").replace(",", ""))
+                except ValueError:
+                    return ""
+                if price >= market:
+                    return "background-color: #d4edda; color: #155724"
+                return "background-color: #f8d7da; color: #721c24"
+
+            st.dataframe(
+                sim_df.style.applymap(_color),
+                use_container_width=True,
+            )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tab 2: Reverse DCF
