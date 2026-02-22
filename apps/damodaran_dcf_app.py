@@ -2,41 +2,163 @@
 Damodaran DCF application layer: public APIs for ROIC-based DCF models.
 """
 
-from models.damodaran_dcf_model import _damodaran_dcf, _dcf_three_phase
+from models.damodaran_dcf_model import (
+    _phase_investment,
+    _phase_scale,
+    _phase_mature,
+)
 
 
-def run_damodaran_dcf(
+# ── Per-phase public APIs ──────────────────────────────────────────────────────
+#
+# Each function accepts the state carried in from the prior phase
+# (current_nopat, current_shares) and the global growth-interpolation context
+# (g_start, g_terminal, total_years), then returns the updated state together
+# with the phase's FCF PV contribution and year-by-year rows.
+#
+# Return schema (all three): {"nopat", "shares", "pv_fcfs", "rows"}
+
+
+def run_phase_investment(
     nopat: float,
-    roic: float,
+    current_shares: float,
+    t_offset: int,
+    years_invest: int,
+    roic_invest: float,
+    roic_peak: float,
     g_start: float,
     g_terminal: float,
+    total_years: int,
     wacc: float,
-    net_debt: float,
-    shares_outstanding: float,
-    years: int = 5,
     issuance_price: float = 0.0,
-    roic_terminal: float | None = None,
 ) -> dict:
     """
-    Public API for the Damodaran ROIC-based DCF model.
+    Investment phase: ROIC ramps linearly from roic_invest → roic_peak.
 
-    issuance_price: share price at which new equity is issued when FCF < 0
-        (assumed to be current market price). Pass 0 to skip dilution tracking.
-    roic_terminal defaults to wacc (Damodaran's recommended default: no excess
-        returns in perpetuity).
+    Args:
+        nopat:          Base NOPAT entering this phase ($).
+        current_shares: Share count entering this phase.
+        t_offset:       Last completed global year before this phase (0 if first).
+        years_invest:   Number of years in this phase.
+        roic_invest:    ROIC at the first year of this phase.
+        roic_peak:      ROIC target at the end of this phase.
+        g_start, g_terminal, total_years: Global growth interpolation context.
+        wacc:           Discount rate.
+        issuance_price: Equity issuance price when FCF < 0 (0 = skip dilution).
+
+    Returns:
+        {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
     """
-    return _damodaran_dcf(
-        nopat=nopat,
-        roic=roic,
+    nopat_out, shares_out, pv_fcfs, rows = _phase_investment(
+        current_nopat=nopat,
+        current_shares=current_shares,
+        t_offset=t_offset,
+        years_invest=years_invest,
+        roic_invest=roic_invest,
+        roic_peak=roic_peak,
         g_start=g_start,
         g_terminal=g_terminal,
+        total_years=total_years,
         wacc=wacc,
-        net_debt=net_debt,
-        shares_outstanding=shares_outstanding,
-        years=years,
         issuance_price=issuance_price,
-        roic_terminal=roic_terminal,
     )
+    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+
+
+def run_phase_scale(
+    nopat: float,
+    current_shares: float,
+    t_offset: int,
+    years_scale: int,
+    roic_peak: float,
+    g_start: float,
+    g_terminal: float,
+    total_years: int,
+    wacc: float,
+    issuance_price: float = 0.0,
+) -> dict:
+    """
+    Scale phase: ROIC is constant at roic_peak (operating leverage at full force).
+
+    Args:
+        nopat:          NOPAT at end of investment phase.
+        current_shares: Share count entering this phase.
+        t_offset:       Last completed global year (= years_invest).
+        years_scale:    Number of years in this phase.
+        roic_peak:      ROIC throughout this phase.
+        g_start, g_terminal, total_years: Global growth interpolation context.
+        wacc:           Discount rate.
+        issuance_price: Equity issuance price when FCF < 0 (0 = skip dilution).
+
+    Returns:
+        {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
+    """
+    nopat_out, shares_out, pv_fcfs, rows = _phase_scale(
+        current_nopat=nopat,
+        current_shares=current_shares,
+        t_offset=t_offset,
+        years_scale=years_scale,
+        roic_peak=roic_peak,
+        g_start=g_start,
+        g_terminal=g_terminal,
+        total_years=total_years,
+        wacc=wacc,
+        issuance_price=issuance_price,
+    )
+    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+
+
+def run_phase_mature(
+    nopat: float,
+    current_shares: float,
+    t_offset: int,
+    years_mature: int,
+    roic_peak: float,
+    roic_terminal: float,
+    g_start: float,
+    g_terminal: float,
+    total_years: int,
+    wacc: float,
+    issuance_price: float = 0.0,
+) -> dict:
+    """
+    Mature phase: ROIC decays linearly from roic_peak → roic_terminal (= WACC).
+
+    Guarantees no FCF discontinuity at the forecast/terminal boundary: at the
+    last mature year, roic_t = roic_terminal, matching the terminal reinvestment
+    rate exactly.
+
+    Args:
+        nopat:          NOPAT at end of scale phase.
+        current_shares: Share count entering this phase.
+        t_offset:       Last completed global year (= years_invest + years_scale).
+        years_mature:   Number of years in this phase.
+        roic_peak:      ROIC at the first year of this phase.
+        roic_terminal:  ROIC at the last year of this phase (and in perpetuity).
+        g_start, g_terminal, total_years: Global growth interpolation context.
+        wacc:           Discount rate.
+        issuance_price: Equity issuance price when FCF < 0 (0 = skip dilution).
+
+    Returns:
+        {"nopat": float, "shares": float, "pv_fcfs": float, "rows": list[dict]}
+    """
+    nopat_out, shares_out, pv_fcfs, rows = _phase_mature(
+        current_nopat=nopat,
+        current_shares=current_shares,
+        t_offset=t_offset,
+        years_mature=years_mature,
+        roic_peak=roic_peak,
+        roic_terminal=roic_terminal,
+        g_start=g_start,
+        g_terminal=g_terminal,
+        total_years=total_years,
+        wacc=wacc,
+        issuance_price=issuance_price,
+    )
+    return {"nopat": nopat_out, "shares": shares_out, "pv_fcfs": pv_fcfs, "rows": rows}
+
+
+# ── Orchestrator ───────────────────────────────────────────────────────────────
 
 
 def run_dcf_three_phase(
@@ -55,31 +177,88 @@ def run_dcf_three_phase(
     roic_terminal: float | None = None,
 ) -> dict:
     """
-    Public API for the three-phase ROIC DCF model.
-
-    Models high-growth company lifecycle:
-      - Investment phase: low/negative ROIC, heavy capital deployment
-      - Scale phase: peak ROIC, operating leverage at full force
-      - Mature phase: ROIC decays linearly from peak back to roic_terminal (= WACC)
+    Orchestrates the three-phase ROIC DCF by calling run_phase_investment,
+    run_phase_scale, and run_phase_mature in sequence, then computing the
+    Gordon Growth terminal value and final equity valuation.
 
     roic_terminal defaults to wacc (no excess returns in perpetuity).
     issuance_price: share price for equity issuance when FCF < 0. Pass 0 to skip dilution.
     """
-    return _dcf_three_phase(
-        nopat=nopat,
-        roic_invest=roic_invest,
-        roic_peak=roic_peak,
-        g_start=g_start,
-        g_terminal=g_terminal,
-        wacc=wacc,
-        net_debt=net_debt,
-        shares_outstanding=shares_outstanding,
-        years_invest=years_invest,
-        years_scale=years_scale,
-        years_mature=years_mature,
-        issuance_price=issuance_price,
-        roic_terminal=roic_terminal,
+    total_years = years_invest + years_scale + years_mature
+    if total_years < 1:
+        raise ValueError("Total forecast years must be at least 1.")
+    if wacc <= g_terminal:
+        raise ValueError("WACC must be greater than terminal growth rate.")
+    if roic_invest <= 0:
+        raise ValueError("roic_invest must be positive.")
+    if roic_peak <= 0:
+        raise ValueError("roic_peak must be positive.")
+    if roic_terminal is None:
+        roic_terminal = wacc
+    if roic_terminal <= g_terminal:
+        raise ValueError(
+            "Terminal ROIC must be greater than terminal growth rate "
+            "(otherwise terminal reinvestment rate >= 1, implying negative FCF forever)."
+        )
+
+    common = dict(
+        g_start=g_start, g_terminal=g_terminal,
+        total_years=total_years, wacc=wacc, issuance_price=issuance_price,
     )
+
+    phase1 = run_phase_investment(
+        nopat=nopat, current_shares=shares_outstanding, t_offset=0,
+        years_invest=years_invest, roic_invest=roic_invest, roic_peak=roic_peak,
+        **common,
+    )
+    phase2 = run_phase_scale(
+        nopat=phase1["nopat"], current_shares=phase1["shares"], t_offset=years_invest,
+        years_scale=years_scale, roic_peak=roic_peak,
+        **common,
+    )
+    phase3 = run_phase_mature(
+        nopat=phase2["nopat"], current_shares=phase2["shares"],
+        t_offset=years_invest + years_scale,
+        years_mature=years_mature, roic_peak=roic_peak, roic_terminal=roic_terminal,
+        **common,
+    )
+
+    rows = phase1["rows"] + phase2["rows"] + phase3["rows"]
+    pv_fcfs = phase1["pv_fcfs"] + phase2["pv_fcfs"] + phase3["pv_fcfs"]
+    final_nopat = phase3["nopat"]
+    final_shares = phase3["shares"]
+
+    terminal_reinvestment_rate = g_terminal / roic_terminal
+    terminal_nopat = final_nopat * (1 + g_terminal)
+    terminal_fcf = terminal_nopat * (1 - terminal_reinvestment_rate)
+    terminal_value = terminal_fcf / (wacc - g_terminal)
+    pv_terminal = terminal_value / (1 + wacc) ** total_years
+
+    enterprise_value = pv_fcfs + pv_terminal
+    equity_value = enterprise_value - net_debt
+    intrinsic_price = equity_value / final_shares
+
+    return {
+        "intrinsic_price": intrinsic_price,
+        "enterprise_value": enterprise_value,
+        "equity_value": equity_value,
+        "pv_fcfs": pv_fcfs,
+        "pv_terminal": pv_terminal,
+        "terminal_reinvestment_rate": terminal_reinvestment_rate,
+        "terminal_nopat": terminal_nopat,
+        "terminal_fcf": terminal_fcf,
+        "total_years": total_years,
+        "diluted_shares": final_shares,
+        "total_new_shares": final_shares - shares_outstanding,
+        "issuance_price": issuance_price,
+        "rows": rows,
+        # Per-phase detail for UI display
+        "phases": {
+            "investment": phase1,
+            "scale":      phase2,
+            "mature":     phase3,
+        },
+    }
 
 
 def compute_three_phase_sensitivity(
@@ -96,12 +275,17 @@ def compute_three_phase_sensitivity(
     years_mature: int,
     issuance_price: float = 0.0,
     roic_terminal: float | None = None,
+    base_price: float | None = None,
 ) -> list[dict]:
     """
     Compute % sensitivity of intrinsic_price to each continuous input parameter.
 
     Each rate/ROIC/growth parameter is perturbed by +1pp (+0.01 absolute).
     nopat is perturbed by +1% relative (since it is in dollars, not a rate).
+
+    base_price: pre-computed intrinsic_price from the caller's base run. If None,
+        the base case is computed internally. Pass result["intrinsic_price"] to
+        avoid a redundant model evaluation.
 
     Returns a list of {"parameter": str, "sensitivity": float} dicts, sorted by
     abs(sensitivity) descending — most impactful parameter first.
@@ -124,7 +308,8 @@ def compute_three_phase_sensitivity(
         issuance_price=issuance_price,
         roic_terminal=roic_terminal,
     )
-    base_price = run_dcf_three_phase(**base_args)["intrinsic_price"]
+    if base_price is None:
+        base_price = run_dcf_three_phase(**base_args)["intrinsic_price"]
 
     perturbations = [
         ("WACC (r)",             {"wacc": wacc + 0.01}),

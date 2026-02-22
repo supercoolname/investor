@@ -1,7 +1,12 @@
 import pandas as pd
 import streamlit as st
 
-from apps.damodaran_dcf_app import run_dcf_three_phase, compute_three_phase_sensitivity
+from apps.damodaran_dcf_app import (
+    run_phase_investment,
+    run_phase_scale,
+    run_phase_mature,
+    compute_three_phase_sensitivity,
+)
 from ui.utils import fmt_b
 
 
@@ -66,25 +71,71 @@ def render_three_phase_dcf_tab():
     if not st.button("Calculate Intrinsic Value", type="primary", key="tp_calc"):
         return
 
+    roic_terminal = wacc  # Damodaran: no excess returns in perpetuity
+
     try:
-        result = run_dcf_three_phase(
-            nopat=nopat,
-            roic_invest=roic_invest,
-            roic_peak=roic_peak,
-            g_start=g_start,
-            g_terminal=g_terminal,
-            wacc=wacc,
-            net_debt=data["net_debt"],
-            shares_outstanding=data["shares_outstanding"],
-            years_invest=years_invest,
-            years_scale=years_scale,
-            years_mature=years_mature,
-            issuance_price=issuance_price,
-            roic_terminal=None,  # defaults to wacc
+        if wacc <= g_terminal:
+            raise ValueError("WACC must be greater than terminal growth rate.")
+        if roic_invest <= 0:
+            raise ValueError("roic_invest must be positive.")
+        if roic_peak <= 0:
+            raise ValueError("roic_peak must be positive.")
+
+        common = dict(
+            g_start=g_start, g_terminal=g_terminal,
+            total_years=total_years, wacc=wacc, issuance_price=issuance_price,
+        )
+
+        phase1 = run_phase_investment(
+            nopat=nopat, current_shares=data["shares_outstanding"], t_offset=0,
+            years_invest=years_invest, roic_invest=roic_invest, roic_peak=roic_peak,
+            **common,
+        )
+        phase2 = run_phase_scale(
+            nopat=phase1["nopat"], current_shares=phase1["shares"], t_offset=years_invest,
+            years_scale=years_scale, roic_peak=roic_peak,
+            **common,
+        )
+        phase3 = run_phase_mature(
+            nopat=phase2["nopat"], current_shares=phase2["shares"],
+            t_offset=years_invest + years_scale,
+            years_mature=years_mature, roic_peak=roic_peak, roic_terminal=roic_terminal,
+            **common,
         )
     except ValueError as e:
         st.error(str(e))
         return
+
+    rows = phase1["rows"] + phase2["rows"] + phase3["rows"]
+    pv_fcfs = phase1["pv_fcfs"] + phase2["pv_fcfs"] + phase3["pv_fcfs"]
+    final_nopat = phase3["nopat"]
+    final_shares = phase3["shares"]
+
+    terminal_reinvestment_rate = g_terminal / roic_terminal
+    terminal_nopat = final_nopat * (1 + g_terminal)
+    terminal_fcf = terminal_nopat * (1 - terminal_reinvestment_rate)
+    terminal_value = terminal_fcf / (wacc - g_terminal)
+    pv_terminal = terminal_value / (1 + wacc) ** total_years
+
+    enterprise_value = pv_fcfs + pv_terminal
+    equity_value = enterprise_value - data["net_debt"]
+    intrinsic_price = equity_value / final_shares
+
+    result = {
+        "intrinsic_price": intrinsic_price,
+        "enterprise_value": enterprise_value,
+        "equity_value": equity_value,
+        "pv_fcfs": pv_fcfs,
+        "pv_terminal": pv_terminal,
+        "terminal_reinvestment_rate": terminal_reinvestment_rate,
+        "terminal_nopat": terminal_nopat,
+        "terminal_fcf": terminal_fcf,
+        "total_years": total_years,
+        "diluted_shares": final_shares,
+        "total_new_shares": final_shares - data["shares_outstanding"],
+        "issuance_price": issuance_price,
+        "rows": rows,
+    }
 
     intrinsic = result["intrinsic_price"]
     market = data["current_price"]
@@ -232,6 +283,7 @@ def render_three_phase_dcf_tab():
         years_mature=years_mature,
         issuance_price=issuance_price,
         roic_terminal=None,
+        base_price=result["intrinsic_price"],  # reuse already-computed value
     )
 
     if sens:

@@ -9,9 +9,7 @@ import streamlit as st
 
 from ui.sidebar import render_sidebar
 from ui.simple_dcf_tab import render_simple_dcf_tab
-from ui.damodaran_dcf_tab import render_damodaran_dcf_tab
 from ui.three_phase_dcf_tab import render_three_phase_dcf_tab
-from ui.reverse_dcf_tab import render_reverse_dcf_tab
 
 st.set_page_config(page_title="DCF Valuation", page_icon="📈", layout="wide")
 
