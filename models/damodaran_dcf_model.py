@@ -20,6 +20,7 @@ Three-phase model: invest (low ROIC) → scale (peak ROIC) → mature (ROIC deca
 """
 
 from dataclasses import dataclass
+import datasource.fetcher as fetcher
 
 
 @dataclass
@@ -39,6 +40,26 @@ class DFCDataYearly:
     shares:            float  # cumulative diluted shares (count)
     discount_factor:   float  # (1 + wacc)^year
     pv:                float  # fcf / discount_factor ($)
+
+
+def resolve_nopat(data: fetcher.FinancialData) -> tuple[float, str]:
+    """
+    Resolve the best available NOPAT₀ from FinancialData with a fallback chain.
+
+    Priority:
+      1. EBIT × (1 − effective_tax_rate)  — correct pre-interest, after-tax earnings
+      2. Operating Cash Flow              — EBIT unavailable
+      3. FCF                              — last resort
+
+    Returns:
+        (nopat, nopat_source) where nopat_source is a human-readable label.
+    """
+    if data.nopat:
+        tax_pct = f"{data.effective_tax_rate * 100:.1f}%" if data.effective_tax_rate else "N/A"
+        return data.nopat, f"EBIT × (1 − {tax_pct})"
+    if data.operating_cash_flow:
+        return data.operating_cash_flow, "Operating Cash Flow (EBIT unavailable)"
+    return data.fcf, "FCF (fallback)"
 
 
 def _phase_investment(

@@ -61,17 +61,6 @@ def render_three_phase_dcf_tab():
     data = st.session_state.tp_stock_data
     loaded_ticker = st.session_state.tp_stock_ticker
 
-    if data.nopat:
-        nopat = data.nopat
-        tax_pct = f"{data.effective_tax_rate * 100:.1f}%" if data.effective_tax_rate else "N/A"
-        nopat_source = f"EBIT × (1 − {tax_pct})"
-    elif data.operating_cash_flow:
-        nopat = data.operating_cash_flow
-        nopat_source = "Operating Cash Flow (EBIT unavailable)"
-    else:
-        nopat = data.fcf
-        nopat_source = "FCF (fallback)"
-
     # ── Two-column layout: inputs left, stock data right ───────────────────────
     left, right = st.columns([2, 1])
 
@@ -120,13 +109,6 @@ def render_three_phase_dcf_tab():
         with g2:
             g_terminal = st.slider("g∞ — Terminal Growth (%)", 1.0, 4.0, 2.5, key="tp_ginf") / 100
 
-        issuance_price = data.current_price
-        st.caption(
-            f"NOPAT proxy: **{nopat_source}** = {utils.fmt_b(nopat)}  ·  "
-            f"Terminal ROIC = WACC ({wacc * 100:.1f}%) — no excess returns in perpetuity.  ·  "
-            f"⚠️ New shares assumed issued at current market price **${issuance_price:,.2f}**."
-        )
-
         calc_clicked = st.button("Calculate Intrinsic Value", type="primary", key="tp_calc")
 
     if not calc_clicked:
@@ -135,23 +117,23 @@ def render_three_phase_dcf_tab():
     # ── Results (full width) ───────────────────────────────────────────────────
     try:
         result = damodaran_dcf_app.run_dcf_three_phase(
-            nopat=nopat,
+            data=data,
             roic_invest=roic_invest,
             roic_peak=roic_peak,
             g_start=g_start,
             g_terminal=g_terminal,
             wacc=wacc,
-            net_debt=data.net_debt,
-            shares_outstanding=data.shares_outstanding,
             years_invest=years_invest,
             years_scale=years_scale,
             years_mature=years_mature,
-            issuance_price=issuance_price,
             roic_terminal=None,  # defaults to wacc
         )
     except ValueError as e:
         st.error(str(e))
         return
+
+    nopat = result["nopat"]
+    nopat_source = result["nopat_source"]
 
     intrinsic = result["intrinsic_price"]
     market = data.current_price
@@ -285,18 +267,15 @@ def render_three_phase_dcf_tab():
     # ── Sensitivity Analysis ───────────────────────────────────────────────────
     st.subheader("📊 Sensitivity Analysis")
     sens = damodaran_dcf_app.compute_three_phase_sensitivity(
-        nopat=nopat,
+        data=data,
         roic_invest=roic_invest,
         roic_peak=roic_peak,
         g_start=g_start,
         g_terminal=g_terminal,
         wacc=wacc,
-        net_debt=data.net_debt,
-        shares_outstanding=data.shares_outstanding,
         years_invest=years_invest,
         years_scale=years_scale,
         years_mature=years_mature,
-        issuance_price=issuance_price,
         roic_terminal=None,
         base_price=result["intrinsic_price"],
     )

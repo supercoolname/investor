@@ -2,6 +2,7 @@
 DCF application layer: public API for running DCF valuations and simulations.
 """
 
+import datasource.fetcher as fetcher
 import models.dcf_model as dcf_model
 
 _SIM_YEARS = 7
@@ -10,12 +11,10 @@ _SIM_TERMINAL_GROWTH_RATES = [x / 100 for x in range(2, 9)]  # 2% to 8% in 1% st
 
 
 def run_dcf(
-    fcf: float,
+    data: fetcher.FinancialData,
     near_growth: float,
     wacc: float,
     terminal_growth: float,
-    net_debt: float,
-    shares_outstanding: float,
     years: int = 5,
 ) -> dict:
     """
@@ -25,12 +24,10 @@ def run_dcf(
     (year `years`), then continues at terminal_growth in perpetuity.
 
     Args:
-        fcf: Base Free Cash Flow (most recent annual, in dollars)
+        data: FinancialData from the fetcher (provides fcf, net_debt, shares_outstanding)
         near_growth: Near-term growth rate at year 1 (e.g. 0.10 for 10%)
         wacc: Discount rate / WACC (e.g. 0.10 for 10%)
         terminal_growth: Perpetual growth rate beyond forecast (e.g. 0.025)
-        net_debt: Total Debt - Cash (in dollars)
-        shares_outstanding: Number of shares
         years: Forecast horizon (default 5)
 
     Returns:
@@ -39,22 +36,20 @@ def run_dcf(
             pv_fcfs, pv_terminal, rows (year-by-year breakdown)
     """
     return dcf_model._dcf_linear_growth(
-        fcf=fcf,
+        fcf=data.fcf,
         g_start=near_growth,
         g_terminal=terminal_growth,
         wacc=wacc,
-        net_debt=net_debt,
-        shares_outstanding=shares_outstanding,
+        net_debt=data.net_debt,
+        shares_outstanding=data.shares_outstanding,
         years=years,
     )
 
 
 def run_dcf_simulation(
-    fcf: float,
+    data: fetcher.FinancialData,
     near_growth: float,
     wacc: float,
-    net_debt: float,
-    shares_outstanding: float,
 ) -> dict:
     """
     Sensitivity simulation: intrinsic price across a grid of near-term growth
@@ -65,11 +60,9 @@ def run_dcf_simulation(
     fixed at 7 years with growth declining linearly from g_start to g_terminal.
 
     Args:
-        fcf: Base Free Cash Flow (most recent annual, in dollars)
+        data: FinancialData from the fetcher (provides fcf, net_debt, shares_outstanding)
         near_growth: Center near-term growth rate from the DCF slider (e.g. 0.10)
         wacc: Discount rate / WACC (fixed, e.g. 0.10)
-        net_debt: Total Debt - Cash (in dollars)
-        shares_outstanding: Number of shares
 
     Returns:
         dict with keys:
@@ -90,12 +83,12 @@ def run_dcf_simulation(
                 continue
             try:
                 result = dcf_model._dcf_linear_growth(
-                    fcf=fcf,
+                    fcf=data.fcf,
                     g_start=g_start,
                     g_terminal=g_terminal,
                     wacc=wacc,
-                    net_debt=net_debt,
-                    shares_outstanding=shares_outstanding,
+                    net_debt=data.net_debt,
+                    shares_outstanding=data.shares_outstanding,
                     years=_SIM_YEARS,
                 )
                 row.append(result["intrinsic_price"])

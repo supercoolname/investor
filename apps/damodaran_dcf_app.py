@@ -5,6 +5,7 @@ Formatting boundary: model functions (_phase_*) return raw numeric dicts.
 This layer converts raw rows to display format before returning to callers.
 """
 
+import datasource.fetcher as fetcher
 import models.damodaran_dcf_model as damodaran_dcf_model
 
 
@@ -206,28 +207,33 @@ def run_phase_mature(
 
 
 def run_dcf_three_phase(
-    nopat: float,
+    data: fetcher.FinancialData,
     roic_invest: float,
     roic_peak: float,
     g_start: float,
     g_terminal: float,
     wacc: float,
-    net_debt: float,
-    shares_outstanding: float,
     years_invest: int,
     years_scale: int,
     years_mature: int,
-    issuance_price: float = 0.0,
     roic_terminal: float | None = None,
+    _nopat_override: float | None = None,  # internal use only (sensitivity perturbation)
 ) -> dict:
     """
     Orchestrates the three-phase ROIC DCF by calling run_phase_investment,
     run_phase_scale, and run_phase_mature in sequence, then computing the
     Gordon Growth terminal value and final equity valuation.
 
+    NOPAT₀ is resolved from data via resolve_nopat() (EBIT → Op CF → FCF fallback).
     roic_terminal defaults to wacc (no excess returns in perpetuity).
-    issuance_price: share price for equity issuance when FCF < 0. Pass 0 to skip dilution.
+    New shares are assumed issued at data.current_price when FCF < 0.
+
+    Args:
+        data: FinancialData from the fetcher
     """
+    nopat, nopat_source = damodaran_dcf_model.resolve_nopat(data)
+    if _nopat_override is not None:
+        nopat = _nopat_override
     total_years = years_invest + years_scale + years_mature
     if total_years < 1:
         raise ValueError("Total forecast years must be at least 1.")
@@ -247,11 +253,11 @@ def run_dcf_three_phase(
 
     common = dict(
         g_start=g_start, g_terminal=g_terminal,
-        total_years=total_years, wacc=wacc, issuance_price=issuance_price,
+        total_years=total_years, wacc=wacc, issuance_price=data.current_price,
     )
 
     phase1 = run_phase_investment(
-        nopat=nopat, current_shares=shares_outstanding, t_offset=0,
+        nopat=nopat, current_shares=data.shares_outstanding, t_offset=0,
         years_invest=years_invest, roic_invest=roic_invest, roic_peak=roic_peak,
         **common,
     )
@@ -279,7 +285,7 @@ def run_dcf_three_phase(
     pv_terminal = terminal_value / (1 + wacc) ** total_years
 
     enterprise_value = pv_fcfs + pv_terminal
-    equity_value = enterprise_value - net_debt
+    equity_value = enterprise_value - data.net_debt
     intrinsic_price = equity_value / final_shares
 
     return {
@@ -293,25 +299,24 @@ def run_dcf_three_phase(
         "terminal_fcf": terminal_fcf,
         "total_years": total_years,
         "diluted_shares": final_shares,
-        "total_new_shares": final_shares - shares_outstanding,
-        "issuance_price": issuance_price,
+        "total_new_shares": final_shares - data.shares_outstanding,
+        "issuance_price": data.current_price,
+        "nopat": nopat,
+        "nopat_source": nopat_source,
         "rows": rows,
     }
 
 
 def compute_three_phase_sensitivity(
-    nopat: float,
+    data: fetcher.FinancialData,
     roic_invest: float,
     roic_peak: float,
     g_start: float,
     g_terminal: float,
     wacc: float,
-    net_debt: float,
-    shares_outstanding: float,
     years_invest: int,
     years_scale: int,
     years_mature: int,
-    issuance_price: float = 0.0,
     roic_terminal: float | None = None,
     base_price: float | None = None,
 ) -> list[dict]:
@@ -319,7 +324,7 @@ def compute_three_phase_sensitivity(
     Compute % sensitivity of intrinsic_price to each continuous input parameter.
 
     Each rate/ROIC/growth parameter is perturbed by +1pp (+0.01 absolute).
-    nopat is perturbed by +1% relative (since it is in dollars, not a rate).
+    NOPAT₀ is perturbed by +1% relative (since it is in dollars, not a rate).
 
     base_price: pre-computed intrinsic_price from the caller's base run. If None,
         the base case is computed internally. Pass result["intrinsic_price"] to
@@ -331,19 +336,17 @@ def compute_three_phase_sensitivity(
     Perturbations that violate model constraints (e.g. g_terminal >= wacc) are
     silently skipped.
     """
+    nopat, _ = damodaran_dcf_model.resolve_nopat(data)
     base_args = dict(
-        nopat=nopat,
+        data=data,
         roic_invest=roic_invest,
         roic_peak=roic_peak,
         g_start=g_start,
         g_terminal=g_terminal,
         wacc=wacc,
-        net_debt=net_debt,
-        shares_outstanding=shares_outstanding,
         years_invest=years_invest,
         years_scale=years_scale,
         years_mature=years_mature,
-        issuance_price=issuance_price,
         roic_terminal=roic_terminal,
     )
     if base_price is None:
@@ -355,7 +358,7 @@ def compute_three_phase_sensitivity(
         ("Terminal Growth (g∞)", {"g_terminal": g_terminal + 0.01}),
         ("ROIC — Investment",    {"roic_invest": roic_invest + 0.01}),
         ("ROIC — Scale Peak",    {"roic_peak": roic_peak + 0.01}),
-        ("NOPAT₀",               {"nopat": nopat * 1.01}),
+        ("NOPAT₀",               {"_nopat_override": nopat * 1.01}),
     ]
 
     results = []

@@ -56,13 +56,10 @@ def render_reverse_dcf_tab():
 
     try:
         implied_g = reverse_dcf_app.solve_implied_g(
-            fcf=rdata.fcf,
+            data=rdata,
             wacc=rdcf_wacc,
             terminal_growth=rdcf_terminal_growth,
-            net_debt=rdata.net_debt,
-            shares_outstanding=rdata.shares_outstanding,
             years=rdcf_years,
-            current_price=rdata.current_price,
         )
     except Exception as e:
         st.error(f"Reverse DCF calculation failed: {e}")
@@ -140,13 +137,10 @@ def render_reverse_dcf_tab():
             continue
         try:
             g_val = reverse_dcf_app.solve_implied_g(
-                fcf=rdata.fcf,
+                data=rdata,
                 wacc=r_test,
                 terminal_growth=rdcf_terminal_growth,
-                net_debt=rdata.net_debt,
-                shares_outstanding=rdata.shares_outstanding,
                 years=rdcf_years,
-                current_price=market,
             )
             label = f"{g_val * 100:.2f}%" if g_val is not None else "N/A"
             if delta == 0.0:

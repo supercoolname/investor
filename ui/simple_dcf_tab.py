@@ -46,12 +46,10 @@ def render_simple_dcf_tab():
 
     try:
         result = dcf_app.run_dcf(
-            fcf=data.fcf,
+            data=data,
             near_growth=near_growth,
             wacc=wacc,
             terminal_growth=terminal_growth,
-            net_debt=data.net_debt,
-            shares_outstanding=data.shares_outstanding,
             years=years,
         )
     except ValueError as e:
@@ -170,11 +168,9 @@ def render_simple_dcf_tab():
     )
 
     sim = dcf_app.run_dcf_simulation(
-        fcf=data.fcf,
+        data=data,
         near_growth=near_growth,
         wacc=wacc,
-        net_debt=data.net_debt,
-        shares_outstanding=data.shares_outstanding,
     )
 
     sim_df = pd.DataFrame(
